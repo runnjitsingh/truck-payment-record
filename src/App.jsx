@@ -1,17 +1,24 @@
-﻿
 ﻿import React, { useState, useEffect } from 'react';
-=======
-import React, { useState, useEffect } from 'react';
->>>>>>> 51e0233779f140fea73a8ac60c933cbb9700bdeb
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, addDoc, deleteDoc, updateDoc, onSnapshot, collection, query, serverTimestamp } from 'firebase/firestore';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
+// Add a style block to hide the number input arrows
+const customStyles = `
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+`;
+
 // Main App component
 const App = () => {
-  // State variables for transactions, form inputs, and Firebase status
+  // State variables for transactions, and Firebase status
   const [transactions, setTransactions] = useState([]);
-  const [formState, setFormState] = useState({ date: '', description: '', amount: '' });
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [appId, setAppId] = useState('');
   const [userId, setUserId] = useState('');
@@ -21,16 +28,27 @@ const App = () => {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState(null);
-
   const [error, setError] = useState('');
+  const [currentPage, setCurrentPage] = useState('dashboard'); // State for navigation
 
+  // New states for the detail pages and search queries
+  const [selectedChallan, setSelectedChallan] = useState(null);
+  const [selectedTruck, setSelectedTruck] = useState(null);
+  const [challanSearchQuery, setChallanSearchQuery] = useState('');
+  const [truckSearchQuery, setTruckSearchQuery] = useState('');
 
+  // Separate state variables for each form to prevent automatic population
+  const [paymentGivenFormState, setPaymentGivenFormState] = useState({ date: '', amount: '', dueDate: '', challanNo: '', fromAccount: '', toAccount: '', notes: '', truckNo: '' });
+  const [paymentReceivedFormState, setPaymentReceivedFormState] = useState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
+  const [commissionFormState, setCommissionFormState] = useState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
+
+  // State for the single editing form
+  const [editFormState, setEditFormState] = useState(null);
 
   // useEffect to initialize Firebase and handle authentication
   useEffect(() => {
     const initFirebase = async () => {
       try {
-
         // IMPORTANT: Replace the empty object with your actual Firebase configuration
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
           apiKey: "AIzaSyA4id5rldiv9oLlPRYHp89CJvyrNJ3NPV4",
@@ -46,9 +64,6 @@ const App = () => {
           setLoading(false);
           return;
         }
-
-
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
@@ -80,10 +95,8 @@ const App = () => {
         return () => unsubscribeAuth();
       } catch (error) {
         console.error("Error initializing Firebase:", error);
-
         setError("Failed to initialize Firebase. Check your configuration.");
         setLoading(false);
-
       }
     };
     initFirebase();
@@ -107,7 +120,7 @@ const App = () => {
         id: doc.id,
         ...doc.data(),
         // Ensure date is a Date object or string for sorting
-        date: doc.data().date instanceof Date ? doc.data().date.toISOString().split('T')[0] : doc.data().date?.toDate()?.toISOString().split('T')[0] || ''
+        date: doc.data().date?.toDate ? doc.data().date.toDate().toISOString().split('T')[0] : doc.data().date || ''
       }));
 
       // Sort transactions by date in descending order (newest first)
@@ -116,9 +129,7 @@ const App = () => {
       setLoading(false);
     }, (error) => {
       console.error("Error fetching transactions:", error);
-
       setError("Failed to fetch transactions from the database.");
-
       setLoading(false);
     });
 
@@ -126,42 +137,73 @@ const App = () => {
     return () => unsubscribe();
   }, [isAuthReady, db, userId, appId]);
 
-  // Handle changes to form inputs
-  const handleFormChange = (e) => {
+  // Handle changes for Payment Given form
+  const handlePaymentGivenChange = (e) => {
     const { name, value } = e.target;
-    setFormState(prev => ({ ...prev, [name]: value }));
+    let newDueDate = paymentGivenFormState.dueDate;
+    if (name === 'date') {
+      const date = new Date(value);
+      date.setDate(date.getDate() + 7);
+      newDueDate = date.toISOString().split('T')[0];
+    }
+    setPaymentGivenFormState(prev => ({ ...prev, [name]: value, dueDate: newDueDate }));
+  };
+
+  // Handle changes for Payment Received form
+  const handlePaymentReceivedChange = (e) => {
+    const { name, value } = e.target;
+    setPaymentReceivedFormState(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Handle changes for Commission form
+  const handleCommissionChange = (e) => {
+    const { name, value } = e.target;
+    setCommissionFormState(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Handle changes for the single edit form
+  const handleEditFormChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormState(prev => ({ ...prev, [name]: value }));
   };
 
   // Handle form submission to add or update a transaction
-  const handleAddOrUpdateTransaction = async (type, e) => {
-
-      e.preventDefault();
-
+  const handleAddOrUpdateTransaction = async (type) => {
       if (!db || !userId) {
           setError("Database connection not ready. Please wait.");
           return;
       }
 
-    e.preventDefault();
-
-
-    const currentFormState = editingTransaction ? formState : { ...formState, amount: parseFloat(formState.amount) };
+    let formData;
+    if (editingTransaction) {
+      formData = editFormState;
+    } else {
+      switch(type) {
+        case 'payment_given':
+          formData = paymentGivenFormState;
+          break;
+        case 'payment_received':
+          formData = paymentReceivedFormState;
+          break;
+        case 'commission_details':
+          formData = commissionFormState;
+          break;
+        default:
+          setError("Invalid transaction type.");
+          return;
+      }
+    }
 
     // Input validation
-    if (!currentFormState.date || !currentFormState.description || !currentFormState.amount) {
-
-        setError("Please fill in all fields.");
+    if (!formData.date || !formData.amount) {
+        setError("Please fill in all mandatory fields: Date and Amount.");
         return;
-
-      console.log("Please fill in all fields.");
-      return;
-
     }
 
     const transactionData = {
-      date: new Date(currentFormState.date),
-      description: currentFormState.description,
-      amount: parseFloat(currentFormState.amount),
+      ...formData,
+      date: new Date(formData.date),
+      amount: parseInt(formData.amount),
       type,
       createdAt: serverTimestamp(),
     };
@@ -172,36 +214,39 @@ const App = () => {
         const docRef = doc(db, `artifacts/${appId}/users/${userId}/transactions`, editingTransaction.id);
         await updateDoc(docRef, transactionData);
         setEditingTransaction(null); // Exit edit mode
+        setEditFormState(null); // Clear the edit form state
       } else {
         // Add a new transaction
         const docRef = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
         await addDoc(docRef, transactionData);
       }
 
+      // Reset form fields based on type for dashboard forms
+      if (type === 'payment_given') setPaymentGivenFormState({ date: '', amount: '', dueDate: '', challanNo: '', fromAccount: '', toAccount: '', notes: '', truckNo: '' });
+      if (type === 'payment_received') setPaymentReceivedFormState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
+      if (type === 'commission_details') setCommissionFormState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
 
-      // Reset form fields and clear any previous errors
-      setFormState({ date: '', description: '', amount: '' });
-      setError('');
+      setError(''); // Clear any previous errors
     } catch (error) {
       console.error("Error adding/updating document:", error);
       setError("Failed to save transaction. Check your database rules.");
-
-      // Reset form fields
-      setFormState({ date: '', description: '', amount: '' });
-    } catch (error) {
-      console.error("Error adding/updating document:", error);
-
     }
   };
 
   // Set the form fields for editing
   const startEditing = (transaction) => {
     setEditingTransaction(transaction);
-    setFormState({
+    const formStateToSet = {
       date: transaction.date,
-      description: transaction.description,
       amount: transaction.amount,
-    });
+      dueDate: transaction.dueDate || '',
+      challanNo: transaction.challanNo || '',
+      fromAccount: transaction.fromAccount || '',
+      toAccount: transaction.toAccount || '',
+      notes: transaction.notes || '',
+      truckNo: transaction.truckNo || '',
+    };
+    setEditFormState(formStateToSet);
   };
 
   // Open the delete confirmation modal
@@ -226,9 +271,7 @@ const App = () => {
       closeDeleteModal(); // Close the modal after deletion
     } catch (error) {
       console.error("Error deleting document:", error);
-
       setError("Failed to delete transaction.");
-
     }
   };
 
@@ -242,101 +285,157 @@ const App = () => {
     .reduce((sum, t) => sum + (t.amount || 0), 0);
 
   const totalCommissions = transactions
-    .filter(t => t.type === 'commission')
+    .filter(t => t.type === 'commission_details')
     .reduce((sum, t) => sum + (t.amount || 0), 0);
 
-  const netBalance = totalPaymentsReceived - (totalPaymentsGiven + totalCommissions);
-
-  // Get styles based on transaction type
-  const getTransactionStyle = (type) => {
-    switch (type) {
-      case 'payment_received':
-        return {
-          backgroundColor: '#dcfce7',
-          color: '#166534',
-          borderColor: '#bbf7d0',
-        };
-      case 'payment_given':
-        return {
-          backgroundColor: '#e0e7ff',
-          color: '#3730a3',
-          borderColor: '#c7d2fe',
-        };
-      case 'commission':
-        return {
-          backgroundColor: '#fef3c7',
-          color: '#92400e',
-          borderColor: '#fde68a',
-        };
-      default:
-        return {};
+  // Render a transaction list in a table format
+  const renderTransactionTable = (list, type, showActions = true) => {
+    const filteredList = list.filter(t => t.type === type);
+    if (filteredList.length === 0) {
+      return <p className="text-center text-gray-500 dark:text-gray-400">No records of this type found.</p>;
     }
-  };
+    
+    let headers = [];
+    let rowData = (t) => [];
 
-  // Render a transaction list for a given type
-  const renderTransactionList = (type) => {
-    const filteredTransactions = transactions.filter(t => t.type === type);
-    const title = type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+    switch(type) {
+      case 'payment_given':
+        headers = ['Date', 'Truck No.', 'Challan No.', 'From Account', 'To Account', 'Amount (₹)', 'Due Date', 'Notes'];
+        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.fromAccount || 'N/A', t.toAccount || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.dueDate || 'N/A', t.notes || 'N/A'];
+        break;
+      case 'payment_received':
+        headers = ['Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
+        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
+        break;
+      case 'commission_details':
+        headers = ['Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
+        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
+        break;
+      default:
+        headers = ['Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
+        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
+    }
+
+    if (showActions) {
+      headers.push('Actions');
+    }
 
     return (
-      <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-4 text-center">{title}</h2>
-        {filteredTransactions.length > 0 ? (
-          <div className="space-y-4">
-            {filteredTransactions.map(t => (
-              <div
-                key={t.id}
-                className="flex flex-col sm:flex-row items-center justify-between p-4 rounded-lg shadow-md"
-                style={getTransactionStyle(t.type)}
-              >
-                <div className="flex-1 flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full">
-                  <span className="text-sm font-medium w-32 shrink-0">
-                    {t.date}
-                  </span>
-                  <span className="flex-1 font-semibold">{t.description}</span>
-                  <span className="font-bold shrink-0">
-                    ${t.amount ? t.amount.toFixed(2) : '0.00'}
-                  </span>
-                </div>
-                <div className="flex space-x-2 mt-2 sm:mt-0">
-                  <button
-                    onClick={() => startEditing(t)}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm transition-colors shadow-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => openDeleteModal(t)}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm transition-colors shadow-sm"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+          <thead className="bg-gray-200 dark:bg-gray-700">
+            <tr>
+              {headers.map(header => (
+                <th key={header} className="px-6 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider whitespace-nowrap">
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            {filteredList.map(t => (
+              <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150">
+                {rowData(t).map((data, index) => (
+                    <td key={index} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{data}</td>
+                ))}
+                {showActions && (
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button
+                      onClick={() => startEditing(t)}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm transition-colors shadow-sm mr-2"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => openDeleteModal(t)}
+                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm transition-colors shadow-sm"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                )}
+              </tr>
             ))}
-          </div>
-        ) : (
-          <p className="text-center text-gray-500 dark:text-gray-400">No transactions of this type yet.</p>
-        )}
+          </tbody>
+        </table>
       </div>
     );
   };
 
+  // Group transactions by Challan Number
+  const groupedByChallan = transactions.filter(t => t.challanNo).reduce((acc, t) => {
+    const challan = t.challanNo;
+    if (!acc[challan]) {
+      acc[challan] = [];
+    }
+    acc[challan].push(t);
+    return acc;
+  }, {});
+
+  // Group transactions by Truck Number
+  const groupedByTruck = transactions.filter(t => t.truckNo).reduce((acc, t) => {
+    const truck = t.truckNo;
+    if (!acc[truck]) {
+      acc[truck] = [];
+    }
+    acc[truck].push(t);
+    return acc;
+  }, {});
+
+  // Filtered lists for the buttons based on search queries
+  const filteredChallanKeys = Object.keys(groupedByChallan).filter(challan =>
+    challan.toLowerCase().includes(challanSearchQuery.toLowerCase())
+  ).sort(); // Sort alphabetically for consistent ordering
+
+  const filteredTruckKeys = Object.keys(groupedByTruck).filter(truck =>
+    truck.toLowerCase().includes(truckSearchQuery.toLowerCase())
+  ).sort(); // Sort alphabetically for consistent ordering
+
+
   // Render the UI
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 font-inter">
+      {/* Apply custom styles to hide number input arrows */}
+      <style>{customStyles}</style>
       <div className="container mx-auto max-w-4xl p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
 
         {/* Header */}
         <h1 className="text-3xl font-bold text-center mb-6 text-blue-600 dark:text-blue-400">
-          Transaction Manager
+          Truck Payment - Advance and Commission
         </h1>
+
+        {/* Navigation */}
+        <div className="flex justify-center space-x-4 mb-6 flex-wrap">
+          <button
+            onClick={() => { setCurrentPage('dashboard'); setEditingTransaction(null); }}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${currentPage === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+          >
+            Dashboard
+          </button>
+          <button
+            onClick={() => { setCurrentPage('allRecords'); setEditingTransaction(null); }}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${currentPage === 'allRecords' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+          >
+            All Records
+          </button>
+          <button
+            onClick={() => { setCurrentPage('challanRecords'); setSelectedChallan(null); }}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${currentPage === 'challanRecords' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+          >
+            Challan Records
+          </button>
+          <button
+            onClick={() => { setCurrentPage('truckRecords'); setSelectedTruck(null); }}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${currentPage === 'truckRecords' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+          >
+            Truck Records
+          </button>
+        </div>
 
         {/* User ID display for reference */}
         <div className="mb-4 text-xs text-center text-gray-500 dark:text-gray-400 truncate">
           <p>User ID: {userId || 'Authenticating...'}</p>
         </div>
-
 
         {/* Error message display */}
         {error && (
@@ -345,198 +444,466 @@ const App = () => {
             </div>
         )}
 
+        {/* Conditional rendering based on currentPage */}
+        {currentPage === 'dashboard' && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Add Payment Given Form */}
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
+                  <h2 className="text-2xl font-semibold mb-4 text-center text-indigo-500 dark:text-indigo-400">Payment Given</h2>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    handleAddOrUpdateTransaction('payment_given');
+                  }} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input
+                        type="date"
+                        name="date"
+                        value={paymentGivenFormState.date}
+                        onChange={handlePaymentGivenChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                        placeholder="Date"
+                      />
+                      <input
+                        type="date"
+                        name="dueDate"
+                        value={paymentGivenFormState.dueDate}
+                        onChange={handlePaymentGivenChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                        placeholder="Due Date"
+                      />
+                      <input
+                          type="text"
+                          name="truckNo"
+                          placeholder="Truck No."
+                          value={paymentGivenFormState.truckNo}
+                          onChange={handlePaymentGivenChange}
+                          className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                        />
+                      <input
+                        type="text"
+                        name="challanNo"
+                        placeholder="Challan No."
+                        value={paymentGivenFormState.challanNo}
+                        onChange={handlePaymentGivenChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <select
+                        name="fromAccount"
+                        value={paymentGivenFormState.fromAccount}
+                        onChange={handlePaymentGivenChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      >
+                        <option value="">Select From Account</option>
+                        <option value="PNB">PNB</option>
+                        <option value="KB">KB</option>
+                        <option value="CASH">CASH</option>
+                      </select>
+                      <input
+                        type="text"
+                        name="toAccount"
+                        placeholder="To Account"
+                        value={paymentGivenFormState.toAccount}
+                        onChange={handlePaymentGivenChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <input
+                        type="number"
+                        step="1"
+                        name="amount"
+                        placeholder="Amount"
+                        value={paymentGivenFormState.amount}
+                        onChange={handlePaymentGivenChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <textarea
+                        name="notes"
+                        placeholder="Notes"
+                        value={paymentGivenFormState.notes}
+                        onChange={handlePaymentGivenChange}
+                        rows="3"
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                    >
+                      Add Payment Given
+                    </button>
+                  </form>
+                </div>
+                {/* Add Payment Received Form */}
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
+                  <h2 className="text-2xl font-semibold mb-4 text-center text-green-500 dark:text-green-400">Payment Received</h2>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    handleAddOrUpdateTransaction('payment_received');
+                  }} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input
+                        type="date"
+                        name="date"
+                        value={paymentReceivedFormState.date}
+                        onChange={handlePaymentReceivedChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                        placeholder="Date"
+                      />
+                      <input
+                        type="text"
+                        name="truckNo"
+                        placeholder="Truck No."
+                        value={paymentReceivedFormState.truckNo}
+                        onChange={handlePaymentReceivedChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <input
+                        type="text"
+                        name="challanNo"
+                        placeholder="Challan No."
+                        value={paymentReceivedFormState.challanNo}
+                        onChange={handlePaymentReceivedChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <input
+                        type="number"
+                        step="1"
+                        name="amount"
+                        placeholder="Amount Received"
+                        value={paymentReceivedFormState.amount}
+                        onChange={handlePaymentReceivedChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <textarea
+                        name="notes"
+                        placeholder="Notes"
+                        value={paymentReceivedFormState.notes}
+                        onChange={handlePaymentReceivedChange}
+                        rows="3"
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                    >
+                      Add Payment Received
+                    </button>
+                  </form>
+                </div>
+                {/* Add Commission Details Form */}
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
+                  <h2 className="text-2xl font-semibold mb-4 text-center text-yellow-500 dark:text-yellow-400">Commission Details</h2>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    handleAddOrUpdateTransaction('commission_details');
+                  }} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input
+                        type="date"
+                        name="date"
+                        value={commissionFormState.date}
+                        onChange={handleCommissionChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                        placeholder="Date"
+                      />
+                      <input
+                        type="text"
+                        name="truckNo"
+                        placeholder="Truck No."
+                        value={commissionFormState.truckNo}
+                        onChange={handleCommissionChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <input
+                        type="text"
+                        name="challanNo"
+                        placeholder="Challan No."
+                        value={commissionFormState.challanNo}
+                        onChange={handleCommissionChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <input
+                        type="number"
+                        step="1"
+                        name="amount"
+                        placeholder="Commission Amount"
+                        value={commissionFormState.amount}
+                        onChange={handleCommissionChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <textarea
+                        name="notes"
+                        placeholder="Notes"
+                        value={commissionFormState.notes}
+                        onChange={handleCommissionChange}
+                        rows="3"
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                    >
+                      Add Commission
+                    </button>
+                  </form>
+                </div>
+            </div>
 
-        {/* Summary section */}
-        <div className="grid grid-cols-2 gap-4 mb-6 text-center">
-          <div className="bg-green-100 dark:bg-green-800 p-4 rounded-lg shadow-md">
-            <h2 className="text-lg font-semibold text-green-700 dark:text-green-300">Received</h2>
-            <p className="text-2xl font-bold mt-2">${totalPaymentsReceived.toFixed(2)}</p>
-          </div>
-          <div className="bg-indigo-100 dark:bg-indigo-800 p-4 rounded-lg shadow-md">
-            <h2 className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">Given</h2>
-            <p className="text-2xl font-bold mt-2">${totalPaymentsGiven.toFixed(2)}</p>
-          </div>
-          <div className="bg-yellow-100 dark:bg-yellow-800 p-4 rounded-lg shadow-md">
-            <h2 className="text-lg font-semibold text-yellow-700 dark:text-yellow-300">Commissions</h2>
-            <p className="text-2xl font-bold mt-2">${totalCommissions.toFixed(2)}</p>
-          </div>
-          <div className="bg-blue-100 dark:bg-blue-800 p-4 rounded-lg shadow-md">
-            <h2 className="text-lg font-semibold text-blue-700 dark:text-blue-300">Net Balance</h2>
-            <p className="text-2xl font-bold mt-2">${netBalance.toFixed(2)}</p>
-          </div>
-        </div>
+            {/* Summary section */}
+            <div className="mt-6 flex flex-col md:flex-row justify-between gap-4 text-center">
+              <div className="bg-indigo-100 dark:bg-indigo-800 p-4 rounded-lg shadow-md w-full">
+                <h2 className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">Total Payments Given</h2>
+                <p className="text-2xl font-bold mt-2">₹{totalPaymentsGiven.toFixed(0)}</p>
+              </div>
+              <div className="bg-green-100 dark:bg-green-800 p-4 rounded-lg shadow-md w-full">
+                <h2 className="text-lg font-semibold text-green-700 dark:text-green-300">Total Payments Received</h2>
+                <p className="text-2xl font-bold mt-2">₹{totalPaymentsReceived.toFixed(0)}</p>
+              </div>
+              <div className="bg-yellow-100 dark:bg-yellow-800 p-4 rounded-lg shadow-md w-full">
+                <h2 className="text-lg font-semibold text-yellow-700 dark:text-yellow-300">Total Commission</h2>
+                <p className="text-2xl font-bold mt-2">₹{totalCommissions.toFixed(0)}</p>
+              </div>
+            </div>
+          </>
+        )}
 
-        {/* Add/Edit Transaction Sections */}
-        <div className="space-y-6">
-          {editingTransaction ? (
-            <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
-              <h2 className="text-2xl font-semibold mb-4 text-center">Edit Transaction</h2>
-              <form onSubmit={(e) => handleAddOrUpdateTransaction(editingTransaction.type, e)} className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:space-x-4 space-y-4 sm:space-y-0">
-                  <input
-                    type="date"
-                    name="date"
-                    value={formState.date}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
+        {currentPage === 'allRecords' && (
+          <div className="mt-6 space-y-6">
+            {editingTransaction ? (
+              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
+                <h2 className="text-2xl font-semibold mb-4 text-center">Edit Transaction</h2>
+                {editFormState && (
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    handleAddOrUpdateTransaction(editingTransaction.type);
+                  }} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input
+                        type="date"
+                        name="date"
+                        value={editFormState.date}
+                        onChange={handleEditFormChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      {editingTransaction.type === 'payment_given' && (
+                        <input
+                          type="date"
+                          name="dueDate"
+                          placeholder="Due Date"
+                          value={editFormState.dueDate}
+                          onChange={handleEditFormChange}
+                          className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                        />
+                      )}
+                      <input
+                        type="number"
+                        step="1"
+                        name="amount"
+                        placeholder="Amount"
+                        value={editFormState.amount}
+                        onChange={handleEditFormChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <input
+                        type="text"
+                        name="truckNo"
+                        placeholder="Truck No."
+                        value={editFormState.truckNo}
+                        onChange={handleEditFormChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      <input
+                        type="text"
+                        name="challanNo"
+                        placeholder="Challan No."
+                        value={editFormState.challanNo}
+                        onChange={handleEditFormChange}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                      />
+                      {editingTransaction.type === 'payment_given' && (
+                        <>
+                          <select
+                            name="fromAccount"
+                            value={editFormState.fromAccount}
+                            onChange={handleEditFormChange}
+                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                          >
+                            <option value="">Select From Account</option>
+                            <option value="PNB">PNB</option>
+                            <option value="KB">KB</option>
+                            <option value="CASH">CASH</option>
+                          </select>
+                          <input
+                            type="text"
+                            name="toAccount"
+                            placeholder="To Account"
+                            value={editFormState.toAccount}
+                            onChange={handleEditFormChange}
+                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+                          />
+                        </>
+                      )}
+                      <textarea
+                        name="notes"
+                        placeholder="Notes"
+                        value={editFormState.notes}
+                        onChange={handleEditFormChange}
+                        rows="3"
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                    >
+                      Update Transaction
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {setEditingTransaction(null); setEditFormState(null);}}
+                      className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors mt-2"
+                    >
+                      Cancel Edit
+                    </button>
+                  </form>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
+                  <h3 className="text-xl font-semibold mb-4 text-center">Payment Given</h3>
+                  {renderTransactionTable(transactions, 'payment_given')}
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
+                  <h3 className="text-xl font-semibold mb-4 text-center">Payment Received</h3>
+                  {renderTransactionTable(transactions, 'payment_received')}
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
+                  <h3 className="text-xl font-semibold mb-4 text-center">Commission Details</h3>
+                  {renderTransactionTable(transactions, 'commission_details')}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {currentPage === 'challanRecords' && (
+          <div className="mt-6 space-y-6">
+            <h2 className="text-2xl font-semibold mb-4 text-center">Challan Records</h2>
+            {selectedChallan ? (
+              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
+                <button
+                  onClick={() => setSelectedChallan(null)}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg mb-4"
+                >
+                  Back to All Challans
+                </button>
+                <h3 className="text-xl font-semibold mb-4">Transactions for Challan No: {selectedChallan}</h3>
+                <div className="space-y-6">
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h4 className="text-lg font-semibold mb-2 text-center">Payment Given</h4>
+                    {renderTransactionTable(groupedByChallan[selectedChallan], 'payment_given', false)}
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h4 className="text-lg font-semibold mb-2 text-center">Payment Received</h4>
+                    {renderTransactionTable(groupedByChallan[selectedChallan], 'payment_received', false)}
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h4 className="text-lg font-semibold mb-2 text-center">Commission Details</h4>
+                    {renderTransactionTable(groupedByChallan[selectedChallan], 'commission_details', false)}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4">
                   <input
                     type="text"
-                    name="description"
-                    placeholder="Description"
-                    value={formState.description}
-                    onChange={handleFormChange}
+                    placeholder="Search by challan number..."
+                    value={challanSearchQuery}
+                    onChange={(e) => setChallanSearchQuery(e.target.value)}
                     className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
                   />
                 </div>
-                <div className="flex flex-col sm:flex-row sm:space-x-4 space-y-4 sm:space-y-0">
+                {filteredChallanKeys.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {filteredChallanKeys.map(challan => (
+                      <button
+                        key={challan}
+                        onClick={() => setSelectedChallan(challan)}
+                        className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 p-4 rounded-lg shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-semibold truncate"
+                      >
+                        {challan}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 dark:text-gray-400">No challan records found.</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {currentPage === 'truckRecords' && (
+          <div className="mt-6 space-y-6">
+            <h2 className="text-2xl font-semibold mb-4 text-center">Truck Records</h2>
+            {selectedTruck ? (
+              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
+                <button
+                  onClick={() => setSelectedTruck(null)}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg mb-4"
+                >
+                  Back to All Trucks
+                </button>
+                <h3 className="text-xl font-semibold mb-4">Transactions for Truck No: {selectedTruck}</h3>
+                <div className="space-y-6">
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h4 className="text-lg font-semibold mb-2 text-center">Payment Given</h4>
+                    {renderTransactionTable(groupedByTruck[selectedTruck], 'payment_given', false)}
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h4 className="text-lg font-semibold mb-2 text-center">Payment Received</h4>
+                    {renderTransactionTable(groupedByTruck[selectedTruck], 'payment_received', false)}
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h4 className="text-lg font-semibold mb-2 text-center">Commission Details</h4>
+                    {renderTransactionTable(groupedByTruck[selectedTruck], 'commission_details', false)}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4">
                   <input
-                    type="number"
-                    step="0.01"
-                    name="amount"
-                    placeholder="Amount"
-                    value={formState.amount}
-                    onChange={handleFormChange}
+                    type="text"
+                    placeholder="Search by truck number..."
+                    value={truckSearchQuery}
+                    onChange={(e) => setTruckSearchQuery(e.target.value)}
                     className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
                   />
                 </div>
-                <button
-                  type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
-                >
-                  Update Transaction
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditingTransaction(null)}
-                  className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors mt-2"
-                >
-                  Cancel Edit
-                </button>
-              </form>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Payment Given Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-indigo-500 dark:text-indigo-400">Payment Given</h2>
-                <form onSubmit={(e) => handleAddOrUpdateTransaction('payment_given', e)} className="space-y-4">
-                  <input
-                    type="date"
-                    name="date"
-                    value={formState.date}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <input
-                    type="text"
-                    name="description"
-                    placeholder="Description"
-                    value={formState.description}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="amount"
-                    placeholder="Amount"
-                    value={formState.amount}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
-                  >
-                    Add Payment Given
-                  </button>
-                </form>
-              </div>
-
-              {/* Payment Received Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-green-500 dark:text-green-400">Payment Received</h2>
-                <form onSubmit={(e) => handleAddOrUpdateTransaction('payment_received', e)} className="space-y-4">
-                  <input
-                    type="date"
-                    name="date"
-                    value={formState.date}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <input
-                    type="text"
-                    name="description"
-                    placeholder="Description"
-                    value={formState.description}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="amount"
-                    placeholder="Amount"
-                    value={formState.amount}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
-                  >
-                    Add Payment Received
-                  </button>
-                </form>
-              </div>
-
-              {/* Commission Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-yellow-500 dark:text-yellow-400">Commission</h2>
-                <form onSubmit={(e) => handleAddOrUpdateTransaction('commission', e)} className="space-y-4">
-                  <input
-                    type="date"
-                    name="date"
-                    value={formState.date}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <input
-                    type="text"
-                    name="description"
-                    placeholder="Description"
-                    value={formState.description}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="amount"
-                    placeholder="Amount"
-                    value={formState.amount}
-                    onChange={handleFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
-                  >
-                    Add Commission
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Transaction lists */}
-        <div className="mt-6 space-y-6">
-          {renderTransactionList('payment_received')}
-          {renderTransactionList('payment_given')}
-          {renderTransactionList('commission')}
-        </div>
+                {filteredTruckKeys.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {filteredTruckKeys.map(truck => (
+                      <button
+                        key={truck}
+                        onClick={() => setSelectedTruck(truck)}
+                        className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 p-4 rounded-lg shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-semibold truncate"
+                      >
+                        {truck}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 dark:text-gray-400">No truck records found.</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Delete Confirmation Modal */}
         {isModalOpen && (
@@ -566,8 +933,4 @@ const App = () => {
   );
 };
 
-
 export default App;
-
-export default App;
-
