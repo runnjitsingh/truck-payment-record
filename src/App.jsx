@@ -1,4 +1,8 @@
+﻿
 ﻿import React, { useState, useEffect } from 'react';
+=======
+import React, { useState, useEffect } from 'react';
+>>>>>>> 51e0233779f140fea73a8ac60c933cbb9700bdeb
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, addDoc, deleteDoc, updateDoc, onSnapshot, collection, query, serverTimestamp } from 'firebase/firestore';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -17,12 +21,16 @@ const App = () => {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState(null);
+
   const [error, setError] = useState('');
+
+
 
   // useEffect to initialize Firebase and handle authentication
   useEffect(() => {
     const initFirebase = async () => {
       try {
+
         // IMPORTANT: Replace the empty object with your actual Firebase configuration
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
           apiKey: "AIzaSyA4id5rldiv9oLlPRYHp89CJvyrNJ3NPV4",
@@ -38,6 +46,9 @@ const App = () => {
           setLoading(false);
           return;
         }
+
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
@@ -69,8 +80,10 @@ const App = () => {
         return () => unsubscribeAuth();
       } catch (error) {
         console.error("Error initializing Firebase:", error);
+
         setError("Failed to initialize Firebase. Check your configuration.");
         setLoading(false);
+
       }
     };
     initFirebase();
@@ -103,7 +116,9 @@ const App = () => {
       setLoading(false);
     }, (error) => {
       console.error("Error fetching transactions:", error);
+
       setError("Failed to fetch transactions from the database.");
+
       setLoading(false);
     });
 
@@ -119,6 +134,7 @@ const App = () => {
 
   // Handle form submission to add or update a transaction
   const handleAddOrUpdateTransaction = async (type, e) => {
+
       e.preventDefault();
 
       if (!db || !userId) {
@@ -126,12 +142,20 @@ const App = () => {
           return;
       }
 
+    e.preventDefault();
+
+
     const currentFormState = editingTransaction ? formState : { ...formState, amount: parseFloat(formState.amount) };
 
     // Input validation
     if (!currentFormState.date || !currentFormState.description || !currentFormState.amount) {
+
         setError("Please fill in all fields.");
         return;
+
+      console.log("Please fill in all fields.");
+      return;
+
     }
 
     const transactionData = {
@@ -154,12 +178,19 @@ const App = () => {
         await addDoc(docRef, transactionData);
       }
 
+
       // Reset form fields and clear any previous errors
       setFormState({ date: '', description: '', amount: '' });
       setError('');
     } catch (error) {
       console.error("Error adding/updating document:", error);
       setError("Failed to save transaction. Check your database rules.");
+
+      // Reset form fields
+      setFormState({ date: '', description: '', amount: '' });
+    } catch (error) {
+      console.error("Error adding/updating document:", error);
+
     }
   };
 
@@ -195,7 +226,9 @@ const App = () => {
       closeDeleteModal(); // Close the modal after deletion
     } catch (error) {
       console.error("Error deleting document:", error);
+
       setError("Failed to delete transaction.");
+
     }
   };
 
@@ -304,12 +337,14 @@ const App = () => {
           <p>User ID: {userId || 'Authenticating...'}</p>
         </div>
 
+
         {/* Error message display */}
         {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md mb-4 text-center">
                 <p>{error}</p>
             </div>
         )}
+
 
         {/* Summary section */}
         <div className="grid grid-cols-2 gap-4 mb-6 text-center">
@@ -531,4 +566,8 @@ const App = () => {
   );
 };
 
+
 export default App;
+
+export default App;
+
