@@ -22,7 +22,8 @@ const App = () => {
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [appId, setAppId] = useState('');
   const [userId, setUserId] = useState('');
-  const [loading, setLoading] = useState(true);
+  // CHANGED: Use a specific readiness state instead of a generic loading state
+  const [isAppReady, setIsAppReady] = useState(false);
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -91,7 +92,7 @@ const App = () => {
       } catch (error) {
         console.error("Error initializing Firebase:", error);
         setError("Failed to initialize Firebase. Check your configuration.");
-        setLoading(false);
+        setIsAppReady(true); // Allow UI interaction even if init fails
       }
     };
     initFirebase();
@@ -103,8 +104,6 @@ const App = () => {
       // Don't proceed until auth is ready and we have a userId
       return;
     }
-
-    setLoading(true);
 
     // Get the reference to the user's private transactions collection
     const transactionsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
@@ -121,11 +120,13 @@ const App = () => {
       // Sort transactions by date in descending order (newest first)
       newTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
       setTransactions(newTransactions);
-      setLoading(false);
+      // ADDED: Set isAppReady to true once data is loaded for the first time
+      setIsAppReady(true);
     }, (error) => {
       console.error("Error fetching transactions:", error);
       setError("Failed to fetch transactions from the database.");
-      setLoading(false);
+      // ADDED: Set isAppReady to true even on error so buttons are not stuck
+      setIsAppReady(true);
     });
 
     // Cleanup the listener when the component unmounts
@@ -164,8 +165,9 @@ const App = () => {
 
   // Handle form submission to add or update a transaction
   const handleAddOrUpdateTransaction = async (type) => {
-      if (!db || !userId) {
-          setError("Database connection not ready. Please wait.");
+      // CHANGED: Use the new isAppReady state
+      if (!isAppReady) {
+          setError("App is not ready. Please wait.");
           return;
       }
 
@@ -338,14 +340,14 @@ const App = () => {
                     <button
                       onClick={() => startEditing(t)}
                       className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm transition-colors shadow-sm mr-2"
-                      disabled={loading}
+                      disabled={!isAppReady}
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => openDeleteModal(t)}
                       className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm transition-colors shadow-sm"
-                      disabled={loading}
+                      disabled={!isAppReady}
                     >
                       Delete
                     </button>
@@ -435,7 +437,7 @@ const App = () => {
         </div>
 
         {/* Loading message */}
-        {loading && (
+        { !isAppReady && (
           <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded-md mb-4 text-center">
             <p>Loading records. Please wait...</p>
           </div>
@@ -467,7 +469,7 @@ const App = () => {
                         onChange={handlePaymentGivenChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
                         placeholder="Date"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="date"
@@ -476,7 +478,7 @@ const App = () => {
                         onChange={handlePaymentGivenChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
                         placeholder="Due Date"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                           type="text"
@@ -485,7 +487,7 @@ const App = () => {
                           value={paymentGivenFormState.truckNo}
                           onChange={handlePaymentGivenChange}
                           className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                          disabled={loading}
+                          disabled={!isAppReady}
                         />
                       <input
                         type="text"
@@ -494,14 +496,14 @@ const App = () => {
                         value={paymentGivenFormState.challanNo}
                         onChange={handlePaymentGivenChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <select
                         name="fromAccount"
                         value={paymentGivenFormState.fromAccount}
                         onChange={handlePaymentGivenChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       >
                         <option value="">Select From Account</option>
                         <option value="PNB">PNB</option>
@@ -515,7 +517,7 @@ const App = () => {
                         value={paymentGivenFormState.toAccount}
                         onChange={handlePaymentGivenChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="number"
@@ -525,7 +527,7 @@ const App = () => {
                         value={paymentGivenFormState.amount}
                         onChange={handlePaymentGivenChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <textarea
                         name="notes"
@@ -534,13 +536,13 @@ const App = () => {
                         onChange={handlePaymentGivenChange}
                         rows="3"
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                     </div>
                     <button
                       type="submit"
-                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-                      disabled={loading}
+                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                      disabled={!isAppReady}
                     >
                       Add Payment Given
                     </button>
@@ -561,7 +563,7 @@ const App = () => {
                         onChange={handlePaymentReceivedChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
                         placeholder="Date"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="text"
@@ -570,7 +572,7 @@ const App = () => {
                         value={paymentReceivedFormState.truckNo}
                         onChange={handlePaymentReceivedChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="text"
@@ -579,7 +581,7 @@ const App = () => {
                         value={paymentReceivedFormState.challanNo}
                         onChange={handlePaymentReceivedChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="number"
@@ -589,7 +591,7 @@ const App = () => {
                         value={paymentReceivedFormState.amount}
                         onChange={handlePaymentReceivedChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <textarea
                         name="notes"
@@ -598,13 +600,13 @@ const App = () => {
                         onChange={handlePaymentReceivedChange}
                         rows="3"
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                     </div>
                     <button
                       type="submit"
-                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
-                      disabled={loading}
+                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+                      disabled={!isAppReady}
                     >
                       Add Payment Received
                     </button>
@@ -625,7 +627,7 @@ const App = () => {
                         onChange={handleCommissionChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
                         placeholder="Date"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="text"
@@ -634,7 +636,7 @@ const App = () => {
                         value={commissionFormState.truckNo}
                         onChange={handleCommissionChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="text"
@@ -643,7 +645,7 @@ const App = () => {
                         value={commissionFormState.challanNo}
                         onChange={handleCommissionChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="number"
@@ -653,7 +655,7 @@ const App = () => {
                         value={commissionFormState.amount}
                         onChange={handleCommissionChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <textarea
                         name="notes"
@@ -662,13 +664,13 @@ const App = () => {
                         onChange={handleCommissionChange}
                         rows="3"
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                     </div>
                     <button
                       type="submit"
-                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700 text-white'}`}
-                      disabled={loading}
+                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700 text-white'}`}
+                      disabled={!isAppReady}
                     >
                       Add Commission
                     </button>
@@ -711,7 +713,7 @@ const App = () => {
                         value={editFormState.date}
                         onChange={handleEditFormChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       {editingTransaction.type === 'payment_given' && (
                         <input
@@ -721,7 +723,7 @@ const App = () => {
                           value={editFormState.dueDate}
                           onChange={handleEditFormChange}
                           className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                          disabled={loading}
+                          disabled={!isAppReady}
                         />
                       )}
                       <input
@@ -732,7 +734,7 @@ const App = () => {
                         value={editFormState.amount}
                         onChange={handleEditFormChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="text"
@@ -741,7 +743,7 @@ const App = () => {
                         value={editFormState.truckNo}
                         onChange={handleEditFormChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       <input
                         type="text"
@@ -750,7 +752,7 @@ const App = () => {
                         value={editFormState.challanNo}
                         onChange={handleEditFormChange}
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                       {editingTransaction.type === 'payment_given' && (
                         <>
@@ -759,7 +761,7 @@ const App = () => {
                             value={editFormState.fromAccount}
                             onChange={handleEditFormChange}
                             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                            disabled={loading}
+                            disabled={!isAppReady}
                           >
                             <option value="">Select From Account</option>
                             <option value="PNB">PNB</option>
@@ -773,7 +775,7 @@ const App = () => {
                             value={editFormState.toAccount}
                             onChange={handleEditFormChange}
                             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                            disabled={loading}
+                            disabled={!isAppReady}
                           />
                         </>
                       )}
@@ -784,13 +786,13 @@ const App = () => {
                         onChange={handleEditFormChange}
                         rows="3"
                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       />
                     </div>
                     <button
                       type="submit"
-                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-                      disabled={loading}
+                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                      disabled={!isAppReady}
                     >
                       Update Transaction
                     </button>
@@ -798,7 +800,7 @@ const App = () => {
                       type="button"
                       onClick={() => {setEditingTransaction(null); setEditFormState(null);}}
                       className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors mt-2"
-                      disabled={loading}
+                      disabled={!isAppReady}
                     >
                       Cancel Edit
                     </button>
@@ -832,7 +834,7 @@ const App = () => {
                 <button
                   onClick={() => setSelectedChallan(null)}
                   className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg mb-4"
-                  disabled={loading}
+                  disabled={!isAppReady}
                 >
                   Back to All Challans
                 </button>
@@ -861,7 +863,7 @@ const App = () => {
                     value={challanSearchQuery}
                     onChange={(e) => setChallanSearchQuery(e.target.value)}
                     className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                    disabled={loading}
+                    disabled={!isAppReady}
                   />
                 </div>
                 {filteredChallanKeys.length > 0 ? (
@@ -871,7 +873,7 @@ const App = () => {
                         key={challan}
                         onClick={() => setSelectedChallan(challan)}
                         className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 p-4 rounded-lg shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-semibold truncate"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       >
                         {challan}
                       </button>
@@ -893,7 +895,7 @@ const App = () => {
                 <button
                   onClick={() => setSelectedTruck(null)}
                   className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg mb-4"
-                  disabled={loading}
+                  disabled={!isAppReady}
                 >
                   Back to All Trucks
                 </button>
@@ -922,7 +924,7 @@ const App = () => {
                     value={truckSearchQuery}
                     onChange={(e) => setTruckSearchQuery(e.target.value)}
                     className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                    disabled={loading}
+                    disabled={!isAppReady}
                   />
                 </div>
                 {filteredTruckKeys.length > 0 ? (
@@ -932,7 +934,7 @@ const App = () => {
                         key={truck}
                         onClick={() => setSelectedTruck(truck)}
                         className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 p-4 rounded-lg shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-semibold truncate"
-                        disabled={loading}
+                        disabled={!isAppReady}
                       >
                         {truck}
                       </button>
@@ -956,14 +958,14 @@ const App = () => {
                 <button
                   onClick={handleDeleteTransaction}
                   className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                  disabled={loading}
+                  disabled={!isAppReady}
                 >
                   Yes, Delete
                 </button>
                 <button
                   onClick={closeDeleteModal}
                   className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition-colors"
-                  disabled={loading}
+                  disabled={!isAppReady}
                 >
                   Cancel
                 </button>
