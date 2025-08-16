@@ -49,11 +49,12 @@ const App = () => {
   useEffect(() => {
     const initFirebase = async () => {
       try {
-        // Firebase configuration is provided by the Canvas environment
-        let firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : null;
+        let firebaseConfig;
 
-        // Fallback to hardcoded configuration if the environment variable is not available
-        if (!firebaseConfig) {
+        // Check for the canvas-provided config, otherwise use fallback
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+          firebaseConfig = JSON.parse(__firebase_config);
+        } else {
           console.warn("Using hardcoded Firebase configuration as a fallback.");
           firebaseConfig = {
             apiKey: "AIzaSyA4id5rldiv9oLlPRYHp89CJvyrNJ3NPV4",
@@ -89,6 +90,8 @@ const App = () => {
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         if (initialAuthToken) {
           await signInWithCustomToken(firebaseAuth, initialAuthToken);
+        } else {
+          await signInAnonymously(firebaseAuth);
         }
 
         // Cleanup function
@@ -124,12 +127,10 @@ const App = () => {
       // Sort transactions by date in descending order (newest first)
       newTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
       setTransactions(newTransactions);
-      // ADDED: Set isAppReady to true once data is loaded for the first time
       setIsAppReady(true);
     }, (error) => {
       console.error("Error fetching transactions:", error);
       setError("Failed to fetch transactions from the database.");
-      // ADDED: Set isAppReady to true even on error so buttons are not stuck
       setIsAppReady(true);
     });
 
@@ -169,7 +170,6 @@ const App = () => {
 
   // Handle form submission to add or update a transaction
   const handleAddOrUpdateTransaction = async (type) => {
-      // CHANGED: Use the new isAppReady state
       if (!isAppReady) {
           setError("App is not ready. Please wait.");
           return;
