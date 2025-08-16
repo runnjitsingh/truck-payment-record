@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, addDoc, deleteDoc, updateDoc, onSnapshot, collection, query, serverTimestamp } from 'firebase/firestore';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 
 // Add a style block to hide the number input arrows
 const customStyles = `
@@ -15,351 +15,258 @@ const customStyles = `
   }
 `;
 
+// PASTE YOUR FIREBASE CONFIG HERE
+// You need to replace this entire object with the one from your Firebase project settings.
+const firebaseConfig = {
+  apiKey: "AIzaSyA4id5rldiv9oLlPRYHp89CJvyrNJ3NPV4",
+  authDomain: "truck-payment-record.firebaseapp.com",
+  projectId: "truck-payment-record",
+  storageBucket: "truck-payment-record.firebasestorage.app",
+  messagingSenderId: "646930084187",
+  appId: "1:646930084187:web:bc4df27c97ea6e470f6a7e"
+};
+
 // Main App component
 const App = () => {
   // State variables for transactions, and Firebase status
   const [transactions, setTransactions] = useState([]);
   const [editingTransaction, setEditingTransaction] = useState(null);
-  const [appId, setAppId] = useState('');
   const [userId, setUserId] = useState('');
   const [isAppReady, setIsAppReady] = useState(false);
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState(null);
-  const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTruck, setSelectedTruck] = useState(null);
+  const [selectedChallan, setSelectedChallan] = useState(null); // New state for selected challan
+  const [filterType, setFilterType] = useState('all');
   const [currentPage, setCurrentPage] = useState('dashboard'); // State for navigation
 
-  // New states for the detail pages and search queries
-  const [selectedChallan, setSelectedChallan] = useState(null);
-  const [selectedTruck, setSelectedTruck] = useState(null);
-  const [challanSearchQuery, setChallanSearchQuery] = useState('');
-  const [truckSearchQuery, setTruckSearchQuery] = useState('');
-
-  // Separate state variables for each form to prevent automatic population
-  const [paymentGivenFormState, setPaymentGivenFormState] = useState({ date: '', amount: '', dueDate: '', challanNo: '', fromAccount: '', toAccount: '', notes: '', truckNo: '' });
-  const [paymentReceivedFormState, setPaymentReceivedFormState] = useState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
-  const [commissionFormState, setCommissionFormState] = useState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
-
-  // State for the single editing form
-  const [editFormState, setEditFormState] = useState(null);
-
-  // useEffect to initialize Firebase and handle authentication
+  // Inject custom CSS to hide number input arrows
   useEffect(() => {
-    const initFirebase = async () => {
-      try {
-        let firebaseConfig;
-
-        // Check for the canvas-provided config, otherwise use fallback
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-          firebaseConfig = JSON.parse(__firebase_config);
-        } else {
-          console.warn("Using hardcoded Firebase configuration as a fallback.");
-          firebaseConfig = {
-            apiKey: "AIzaSyA4id5rldiv9oLlPRYHp89CJvyrNJ3NPV4",
-            authDomain: "truck-payment-record.firebaseapp.com",
-            projectId: "truck-payment-record",
-            storageBucket: "truck-payment-record.firebasestorage.app",
-            messagingSenderId: "646930084187",
-            appId: "1:646930084187:web:bc4df27c97ea6e470f6a7e"
-          };
-        }
-
-        const app = initializeApp(firebaseConfig);
-        const firestoreDb = getFirestore(app);
-        const firebaseAuth = getAuth(app);
-        setDb(firestoreDb);
-        setAuth(firebaseAuth);
-
-        const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        setAppId(currentAppId);
-
-        // Listen for authentication state changes
-        const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (user) => {
-          if (user) {
-            setUserId(user.uid);
-            setIsAuthReady(true);
-          } else {
-            // Sign in anonymously if no user is found
-            await signInAnonymously(firebaseAuth);
-          }
-        });
-
-        // Use the initial auth token if available to sign in
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        if (initialAuthToken) {
-          await signInWithCustomToken(firebaseAuth, initialAuthToken);
-        } else {
-          await signInAnonymously(firebaseAuth);
-        }
-
-        // Cleanup function
-        return () => unsubscribeAuth();
-      } catch (error) {
-        console.error("Error initializing Firebase:", error);
-        setError("Failed to initialize Firebase. Check your configuration.");
-        setIsAppReady(true); // Allow UI interaction even if init fails
-      }
+    const styleSheet = document.createElement("style");
+    styleSheet.type = "text/css";
+    styleSheet.innerText = customStyles;
+    document.head.appendChild(styleSheet);
+    return () => {
+      document.head.removeChild(styleSheet);
     };
-    initFirebase();
   }, []);
 
-  // useEffect to set up the Firestore real-time listener
+  // Initialize Firebase and Auth
   useEffect(() => {
-    if (!isAuthReady || !db || !userId) {
-      // Don't proceed until auth is ready and we have a userId
-      return;
+    console.log("Initializing Firebase...");
+    try {
+      const app = initializeApp(firebaseConfig);
+      const firestore = getFirestore(app);
+      const authInstance = getAuth(app);
+      setDb(firestore);
+      setAuth(authInstance);
+      console.log("Firebase initialized.");
+    } catch (error) {
+      console.error("Failed to initialize Firebase:", error);
+      setIsAppReady(false);
     }
+  }, []);
 
-    // Get the reference to the user's private transactions collection
-    const transactionsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
-
-    // Set up the real-time listener with onSnapshot
-    const unsubscribe = onSnapshot(transactionsCollectionRef, (snapshot) => {
-      const newTransactions = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        // Ensure date is a Date object or string for sorting
-        date: doc.data().date?.toDate ? doc.data().date.toDate().toISOString().split('T')[0] : doc.data().date || ''
-      }));
-
-      // Sort transactions by date in descending order (newest first)
-      newTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-      setTransactions(newTransactions);
-      setIsAppReady(true);
-    }, (error) => {
-      console.error("Error fetching transactions:", error);
-      setError("Failed to fetch transactions from the database.");
-      setIsAppReady(true);
-    });
-
-    // Cleanup the listener when the component unmounts
-    return () => unsubscribe();
-  }, [isAuthReady, db, userId, appId]);
-
-  // Handle changes for Payment Given form
-  const handlePaymentGivenChange = (e) => {
-    const { name, value } = e.target;
-    let newDueDate = paymentGivenFormState.dueDate;
-    if (name === 'date') {
-      const date = new Date(value);
-      date.setDate(date.getDate() + 7);
-      newDueDate = date.toISOString().split('T')[0];
+  // Manage Authentication State
+  useEffect(() => {
+    if (auth) {
+      console.log("Setting up auth state listener...");
+      const unsubscribeFromAuth = onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          console.log("onAuthStateChanged: User is signed in. UID:", user.uid);
+          setUserId(user.uid);
+          setIsAppReady(true);
+        } else {
+          console.log("onAuthStateChanged: No user, attempting sign-in...");
+          try {
+            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+            if (initialAuthToken) {
+              console.log("Signing in with custom token...");
+              await signInWithCustomToken(auth, initialAuthToken);
+            } else {
+              console.log("Signing in anonymously...");
+              await signInAnonymously(auth);
+            }
+          } catch (error) {
+            console.error("Anonymous sign-in failed:", error);
+            setIsAppReady(false);
+          }
+        }
+      });
+      return () => unsubscribeFromAuth();
     }
-    setPaymentGivenFormState(prev => ({ ...prev, [name]: value, dueDate: newDueDate }));
-  };
+  }, [auth]);
 
-  // Handle changes for Payment Received form
-  const handlePaymentReceivedChange = (e) => {
-    const { name, value } = e.target;
-    setPaymentReceivedFormState(prev => ({ ...prev, [name]: value }));
-  };
-
-  // Handle changes for Commission form
-  const handleCommissionChange = (e) => {
-    const { name, value } = e.target;
-    setCommissionFormState(prev => ({ ...prev, [name]: value }));
-  };
-
-  // Handle changes for the single edit form
-  const handleEditFormChange = (e) => {
-    const { name, value } = e.target;
-    setEditFormState(prev => ({ ...prev, [name]: value }));
-  };
-
-  // Handle form submission to add or update a transaction
-  const handleAddOrUpdateTransaction = async (type) => {
-      if (!isAppReady) {
-          setError("App is not ready. Please wait.");
-          return;
-      }
-
-    let formData;
-    if (editingTransaction) {
-      formData = editFormState;
-    } else {
-      switch(type) {
-        case 'payment_given':
-          formData = paymentGivenFormState;
-          break;
-        case 'payment_received':
-          formData = paymentReceivedFormState;
-          break;
-        case 'commission_details':
-          formData = commissionFormState;
-          break;
-        default:
-          setError("Invalid transaction type.");
-          return;
+  // Fetch Firestore data after auth is ready
+  useEffect(() => {
+    let unsubscribeFromFirestore = () => {};
+    if (db && userId) {
+      console.log("Setting up Firestore listener for user:", userId);
+      try {
+        const appId = firebaseConfig.projectId;
+        const transactionsCollection = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
+        const q = query(transactionsCollection);
+  
+        unsubscribeFromFirestore = onSnapshot(q, (snapshot) => {
+          const transactionList = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          // Sort transactions by timestamp in descending order
+          transactionList.sort((a, b) => {
+            const timestampA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0;
+            const timestampB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0;
+            return timestampB - timestampA;
+          });
+          setTransactions(transactionList);
+          console.log("Transactions updated:", transactionList.length);
+        }, (error) => {
+          console.error("Error fetching transactions:", error);
+        });
+      } catch (error) {
+        console.error("Error setting up Firestore listener:", error);
       }
     }
+    return () => unsubscribeFromFirestore();
+  }, [db, userId]);
 
-    // Input validation
-    if (!formData.date || !formData.amount) {
-        setError("Please fill in all mandatory fields: Date and Amount.");
-        return;
-    }
+  // Helper function to handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!isAppReady || !editingTransaction) return;
 
-    const transactionData = {
-      ...formData,
-      date: new Date(formData.date),
-      amount: parseInt(formData.amount),
-      type,
-      createdAt: serverTimestamp(),
+    const appId = firebaseConfig.projectId;
+
+    const data = {
+      ...editingTransaction,
+      date: new Date(editingTransaction.date),
+      timestamp: serverTimestamp(),
+      amount: parseFloat(editingTransaction.amount),
     };
 
     try {
-      if (editingTransaction) {
+      if (editingTransaction.id) {
         // Update an existing transaction
         const docRef = doc(db, `artifacts/${appId}/users/${userId}/transactions`, editingTransaction.id);
-        await updateDoc(docRef, transactionData);
-        setEditingTransaction(null); // Exit edit mode
-        setEditFormState(null); // Clear the edit form state
+        await updateDoc(docRef, data);
+        console.log("Document successfully updated!");
       } else {
         // Add a new transaction
-        const docRef = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
-        await addDoc(docRef, transactionData);
+        const transactionsCollection = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
+        await addDoc(transactionsCollection, data);
+        console.log("Document successfully written!");
       }
-
-      // Reset form fields based on type for dashboard forms
-      if (type === 'payment_given') setPaymentGivenFormState({ date: '', amount: '', dueDate: '', challanNo: '', fromAccount: '', toAccount: '', notes: '', truckNo: '' });
-      if (type === 'payment_received') setPaymentReceivedFormState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
-      if (type === 'commission_details') setCommissionFormState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
-
-      setError(''); // Clear any previous errors
-    } catch (error) {
-      console.error("Error adding/updating document:", error);
-      setError("Failed to save transaction. Check your database rules.");
+      setEditingTransaction(null);
+    } catch (e) {
+      console.error("Error adding/updating document: ", e);
     }
   };
 
-  // Set the form fields for editing
-  const startEditing = (transaction) => {
-    setEditingTransaction(transaction);
-    const formStateToSet = {
-      date: transaction.date,
-      amount: transaction.amount,
-      dueDate: transaction.dueDate || '',
-      challanNo: transaction.challanNo || '',
-      fromAccount: transaction.fromAccount || '',
-      toAccount: transaction.toAccount || '',
-      notes: transaction.notes || '',
-      truckNo: transaction.truckNo || '',
-    };
-    setEditFormState(formStateToSet);
+  // Function to prepare a new transaction
+  const handleNewTransaction = (type) => {
+    setEditingTransaction({
+      id: '',
+      type,
+      truckNumber: '',
+      challanNumber: '',
+      date: new Date().toISOString().substring(0, 10),
+      amount: 0,
+      description: '',
+    });
+    setSelectedTruck(null);
+    setSelectedChallan(null);
   };
 
-  // Open the delete confirmation modal
-  const openDeleteModal = (transaction) => {
+  // Function to set up editing for an existing transaction
+  const handleEdit = (transaction) => {
+    setEditingTransaction({
+      ...transaction,
+      date: transaction.date?.toDate()?.toISOString().substring(0, 10) || '',
+    });
+    setSelectedTruck(null);
+    setSelectedChallan(null);
+  };
+
+  // Function to delete a transaction
+  const handleDelete = (transaction) => {
     setTransactionToDelete(transaction);
     setIsModalOpen(true);
   };
 
-  // Close the delete confirmation modal
-  const closeDeleteModal = () => {
-    setTransactionToDelete(null);
-    setIsModalOpen(false);
-  };
-
-  // Handle the deletion of a transaction
   const handleDeleteTransaction = async () => {
-    if (!transactionToDelete) return;
+    if (!isAppReady || !transactionToDelete) return;
+    const appId = firebaseConfig.projectId;
 
     try {
-      const docRef = doc(db, `artifacts/${appId}/users/${userId}/transactions`, transactionToDelete.id);
-      await deleteDoc(docRef);
-      closeDeleteModal(); // Close the modal after deletion
-    } catch (error) {
-      console.error("Error deleting document:", error);
-      setError("Failed to delete transaction.");
+      await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/transactions`, transactionToDelete.id));
+      console.log("Document successfully deleted!");
+      setIsModalOpen(false);
+      setTransactionToDelete(null);
+    } catch (e) {
+      console.error("Error removing document: ", e);
     }
   };
 
-  // Calculate the summary totals
-  const totalPaymentsGiven = transactions
-    .filter(t => t.type === 'payment_given')
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
+  const closeDeleteModal = () => {
+    setIsModalOpen(false);
+    setTransactionToDelete(null);
+  };
 
-  const totalPaymentsReceived = transactions
-    .filter(t => t.type === 'payment_received')
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
-
-  const totalCommissions = transactions
-    .filter(t => t.type === 'commission_details')
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
-
-  // Render a transaction list in a table format
-  const renderTransactionTable = (list, showActions = true) => {
-    if (list.length === 0) {
-      return <p className="text-center text-gray-500 dark:text-gray-400">No records found.</p>;
+  // Helper function for rendering the table
+  const renderTransactionTable = (data, title, showDelete) => {
+    if (data.length === 0) {
+      return (
+        <p className="text-center text-gray-500 dark:text-gray-400 mt-4">No records found for '{title}'.</p>
+      );
     }
-
-    let headers = [];
-    let rowData = (t) => [];
-
-    // Determine headers and row data based on the type of the first transaction in the list
-    const firstTransactionType = list[0]?.type;
-    switch(firstTransactionType) {
-      case 'payment_given':
-        headers = ['Date', 'Truck No.', 'Challan No.', 'From Account', 'To Account', 'Amount (₹)', 'Due Date', 'Notes'];
-        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.fromAccount || 'N/A', t.toAccount || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.dueDate || 'N/A', t.notes || 'N/A'];
-        break;
-      case 'payment_received':
-        headers = ['Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
-        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
-        break;
-      case 'commission_details':
-        headers = ['Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
-        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
-        break;
-      default:
-        // Generic headers for mixed or unknown types
-        headers = ['Type', 'Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
-        rowData = (t) => [t.type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase()), t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
-        break;
-    }
-
-    if (showActions) {
-      headers.push('Actions');
-    }
-
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-full bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-          <thead className="bg-gray-200 dark:bg-gray-700">
-            <tr>
-              {headers.map((header, index) => (
-                <th key={index} className="px-6 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider whitespace-nowrap">
-                  {header}
-                </th>
-              ))}
+      <div className="overflow-x-auto bg-gray-100 dark:bg-gray-800 rounded-lg shadow-inner mt-4 p-2">
+        <table className="min-w-full table-auto">
+          <thead>
+            <tr className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 uppercase text-sm leading-normal">
+              <th className="py-3 px-6 text-left">Date</th>
+              <th className="py-3 px-6 text-left">Type</th>
+              <th className="py-3 px-6 text-left">Truck No.</th>
+              <th className="py-3 px-6 text-left">Challan No.</th>
+              <th className="py-3 px-6 text-left">Amount</th>
+              <th className="py-3 px-6 text-left">Description</th>
+              <th className="py-3 px-6 text-center">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {list.map(t => (
-              <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150">
-                {rowData(t).map((data, index) => (
-                    <td key={index} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{data}</td>
-                ))}
-                {showActions && (
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+          <tbody className="text-gray-600 dark:text-gray-200 text-sm font-light">
+            {data.map((transaction) => (
+              <tr key={transaction.id} className="border-b border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <td className="py-3 px-6 text-left whitespace-nowrap">{transaction.date?.toDate()?.toLocaleDateString()}</td>
+                <td className="py-3 px-6 text-left">{transaction.type}</td>
+                <td className="py-3 px-6 text-left">{transaction.truckNumber}</td>
+                <td className="py-3 px-6 text-left">{transaction.challanNumber}</td>
+                <td className="py-3 px-6 text-left">₹{Math.round(transaction.amount)}</td>
+                <td className="py-3 px-6 text-left">{transaction.description}</td>
+                <td className="py-3 px-6 text-center">
+                  <div className="flex item-center justify-center">
                     <button
-                      onClick={() => startEditing(t)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm transition-colors shadow-sm mr-2"
-                      disabled={!isAppReady}
+                      onClick={() => handleEdit(transaction)}
+                      className="w-4 mr-2 transform hover:scale-110"
                     >
-                      Edit
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
                     </button>
-                    <button
-                      onClick={() => openDeleteModal(t)}
-                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm transition-colors shadow-sm"
-                      disabled={!isAppReady}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                )}
+                    {showDelete && (
+                      <button
+                        onClick={() => handleDelete(transaction)}
+                        className="w-4 mr-2 transform hover:scale-110"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -368,435 +275,355 @@ const App = () => {
     );
   };
 
-  // Group transactions by Challan Number
-  const groupedByChallan = transactions.filter(t => t.challanNo).reduce((acc, t) => {
-    const challan = t.challanNo;
-    if (!acc[challan]) {
-      acc[challan] = [];
-    }
-    acc[challan].push(t);
-    return acc;
-  }, {});
+  // Group transactions by truck number
+  const groupTransactionsByTruck = (transactions) => {
+    return transactions.reduce((acc, curr) => {
+      const truckNo = curr.truckNumber.toUpperCase().trim();
+      if (!acc[truckNo]) {
+        acc[truckNo] = [];
+      }
+      acc[truckNo].push(curr);
+      return acc;
+    }, {});
+  };
 
-  // Group transactions by Truck Number
-  const groupedByTruck = transactions.filter(t => t.truckNo).reduce((acc, t) => {
-    const truck = t.truckNo;
-    if (!acc[truck]) {
-      acc[truck] = [];
-    }
-    acc[truck].push(t);
-    return acc;
-  }, {});
+  // Group transactions by challan number
+  const groupTransactionsByChallan = (transactions) => {
+    return transactions.reduce((acc, curr) => {
+      const challanNo = curr.challanNumber.toUpperCase().trim();
+      if (!acc[challanNo]) {
+        acc[challanNo] = [];
+      }
+      acc[challanNo].push(curr);
+      return acc;
+    }, {});
+  };
 
-  // Filtered lists for the buttons based on search queries
-  const filteredChallanKeys = Object.keys(groupedByChallan).filter(challan =>
-    challan.toLowerCase().includes(challanSearchQuery.toLowerCase())
-  ).sort(); // Sort alphabetically for consistent ordering
+  const groupedByTruck = groupTransactionsByTruck(transactions);
+  const truckNumbers = Object.keys(groupedByTruck).sort();
 
-  const filteredTruckKeys = Object.keys(groupedByTruck).filter(truck =>
-    truck.toLowerCase().includes(truckSearchQuery.toLowerCase())
-  ).sort(); // Sort alphabetically for consistent ordering
+  const groupedByChallan = groupTransactionsByChallan(transactions);
+  const challanNumbers = Object.keys(groupedByChallan).sort();
 
+  // Calculate totals for the dashboard
+  const calculateTotals = (transactions) => {
+    let paymentGiven = 0;
+    let paymentReceived = 0;
+    let commission = 0;
 
-  // Render the UI
+    transactions.forEach(t => {
+      if (t.type === 'Payment Given') {
+        paymentGiven += t.amount;
+      } else if (t.type === 'Payment Received') {
+        paymentReceived += t.amount;
+      } else if (t.type === 'Commission Details') {
+        commission += t.amount;
+      }
+    });
+
+    return { paymentGiven, paymentReceived, commission };
+  };
+
+  const allTotals = calculateTotals(transactions);
+  const filteredTransactions = transactions.filter(t => {
+    const searchMatch = searchQuery === '' ||
+      t.truckNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.challanNumber.toLowerCase().includes(searchQuery.toLowerCase());
+    const filterMatch = filterType === 'all' || t.type === filterType;
+    return searchMatch && filterMatch;
+  });
+
+  // Main UI
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 font-inter">
-      {/* Apply custom styles to hide number input arrows */}
-      <style>{customStyles}</style>
-      <div className="container mx-auto max-w-4xl p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
-
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white p-4 sm:p-8 font-sans">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <h1 className="text-3xl font-bold text-center mb-6 text-blue-600 dark:text-blue-400">
-          Truck Payment - Advance and Commission
-        </h1>
+        <header className="flex flex-col sm:flex-row justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold mb-2 sm:mb-0">Truck Payments Record - Advance and Commissions</h1>
+        </header>
 
-        {/* Navigation */}
-        <div className="flex justify-center space-x-4 mb-6 flex-wrap">
+        {/* User ID Display */}
+        {userId && (
+          <div className="text-sm text-gray-400 dark:text-gray-500 mb-4 break-all">
+            User ID: <span className="font-mono">{userId}</span>
+          </div>
+        )}
+
+        {/* Navigation Tabs */}
+        <div className="flex justify-center space-x-2 mb-6">
           <button
-            onClick={() => { setCurrentPage('dashboard'); setEditingTransaction(null); }}
-            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${currentPage === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+            onClick={() => setCurrentPage('dashboard')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+              currentPage === 'dashboard' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+            }`}
           >
             Dashboard
           </button>
           <button
-            onClick={() => { setCurrentPage('allRecords'); setEditingTransaction(null); }}
-            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${currentPage === 'allRecords' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+            onClick={() => setCurrentPage('allRecords')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+              currentPage === 'allRecords' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+            }`}
           >
             All Records
           </button>
           <button
-            onClick={() => { setCurrentPage('challanRecords'); setSelectedChallan(null); }}
-            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${currentPage === 'challanRecords' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+            onClick={() => setCurrentPage('challanRecords')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+              currentPage === 'challanRecords' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+            }`}
           >
             Challan Records
           </button>
           <button
-            onClick={() => { setCurrentPage('truckRecords'); setSelectedTruck(null); }}
-            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${currentPage === 'truckRecords' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+            onClick={() => setCurrentPage('truckRecords')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+              currentPage === 'truckRecords' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+            }`}
           >
             Truck Records
           </button>
         </div>
 
-        {/* User ID display for reference */}
-        <div className="mb-4 text-xs text-center text-gray-500 dark:text-gray-400 truncate">
-          <p>User ID: {userId || 'Authenticating...'}</p>
-        </div>
-
-        {/* Loading message */}
-        { !isAppReady && (
-          <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded-md mb-4 text-center">
-            <p>Loading records. Please wait...</p>
+        {/* Loading/Error State */}
+        {!isAppReady && (
+          <div className="flex justify-center items-center h-48">
+            <p className="text-gray-500 dark:text-gray-400">
+              Initializing app...
+            </p>
           </div>
         )}
 
-        {/* Error message display */}
-        {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md mb-4 text-center">
-                <p>{error}</p>
-            </div>
+        {/* Transaction Form */}
+        {isAppReady && editingTransaction && (
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+            <h2 className="text-2xl font-semibold mb-4 capitalize">{editingTransaction.id ? `Edit ${editingTransaction.type}` : `Add ${editingTransaction.type}`}</h2>
+            <form onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                <div className="flex flex-col">
+                  <label htmlFor="date" className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+                  <input
+                    type="date"
+                    id="date"
+                    value={editingTransaction.date || ''}
+                    onChange={(e) => setEditingTransaction({ ...editingTransaction, date: e.target.value })}
+                    className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="truckNumber" className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">Truck Number</label>
+                  <input
+                    type="text"
+                    id="truckNumber"
+                    placeholder="e.g., PB10AB1234"
+                    value={editingTransaction.truckNumber || ''}
+                    onChange={(e) => setEditingTransaction({ ...editingTransaction, truckNumber: e.target.value })}
+                    className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="challanNumber" className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">Challan Number</label>
+                  <input
+                    type="text"
+                    id="challanNumber"
+                    placeholder="e.g., #12345"
+                    value={editingTransaction.challanNumber || ''}
+                    onChange={(e) => setEditingTransaction({ ...editingTransaction, challanNumber: e.target.value })}
+                    className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="amount" className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">Amount</label>
+                  <input
+                    type="number"
+                    id="amount"
+                    placeholder="0"
+                    value={editingTransaction.amount || ''}
+                    onChange={(e) => setEditingTransaction({ ...editingTransaction, amount: e.target.value })}
+                    className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col sm:col-span-2">
+                  <label htmlFor="description" className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">Description (Optional)</label>
+                  <input
+                    type="text"
+                    id="description"
+                    placeholder="e.g., Fuel, Repair, etc."
+                    value={editingTransaction.description || ''}
+                    onChange={(e) => setEditingTransaction({ ...editingTransaction, description: e.target.value })}
+                    className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-4">
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors"
+                  disabled={!isAppReady}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingTransaction(null)}
+                  className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold rounded-lg shadow-md transition-colors"
+                  disabled={!isAppReady}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
         )}
 
-        {/* Conditional rendering based on currentPage */}
-        {currentPage === 'dashboard' && (
+        {/* Main Content Sections */}
+        {isAppReady && !editingTransaction && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Add Payment Given Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-indigo-500 dark:text-indigo-400">Payment Given</h2>
-                <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('payment_given'); }} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input
-                      type="date"
-                      name="date"
-                      value={paymentGivenFormState.date}
-                      onChange={handlePaymentGivenChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      placeholder="Date"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="date"
-                      name="dueDate"
-                      value={paymentGivenFormState.dueDate}
-                      onChange={handlePaymentGivenChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      placeholder="Due Date"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="text"
-                      name="truckNo"
-                      placeholder="Truck No."
-                      value={paymentGivenFormState.truckNo}
-                      onChange={handlePaymentGivenChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="text"
-                      name="challanNo"
-                      placeholder="Challan No."
-                      value={paymentGivenFormState.challanNo}
-                      onChange={handlePaymentGivenChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <select
-                      name="fromAccount"
-                      value={paymentGivenFormState.fromAccount}
-                      onChange={handlePaymentGivenChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
+            {/* Add New Transaction Section */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h2 className="text-2xl font-semibold mb-4">Add New Transaction</h2>
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-2 sm:space-y-0 sm:space-x-2">
+                    <button
+                    onClick={() => handleNewTransaction('Payment Given')}
+                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-md transition-colors w-full sm:w-auto"
                     >
-                      <option value="">Select From Account</option>
-                      <option value="PNB">PNB</option>
-                      <option value="KB">KB</option>
-                      <option value="CASH">CASH</option>
-                    </select>
-                    <input
-                      type="text"
-                      name="toAccount"
-                      placeholder="To Account"
-                      value={paymentGivenFormState.toAccount}
-                      onChange={handlePaymentGivenChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="number"
-                      step="1"
-                      name="amount"
-                      placeholder="Amount"
-                      value={paymentGivenFormState.amount}
-                      onChange={handlePaymentGivenChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <textarea
-                      name="notes"
-                      placeholder="Notes"
-                      value={paymentGivenFormState.notes}
-                      onChange={handlePaymentGivenChange}
-                      rows="3"
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
-                      disabled={!isAppReady}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-                    disabled={!isAppReady}
-                  >
                     Add Payment Given
-                  </button>
-                </form>
-              </div>
-
-              {/* Add Payment Received Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-green-500 dark:text-green-400">Payment Received</h2>
-                <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('payment_received'); }} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input
-                      type="date"
-                      name="date"
-                      value={paymentReceivedFormState.date}
-                      onChange={handlePaymentReceivedChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      placeholder="Date"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="text"
-                      name="truckNo"
-                      placeholder="Truck No."
-                      value={paymentReceivedFormState.truckNo}
-                      onChange={handlePaymentReceivedChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="text"
-                      name="challanNo"
-                      placeholder="Challan No."
-                      value={paymentReceivedFormState.challanNo}
-                      onChange={handlePaymentReceivedChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="number"
-                      step="1"
-                      name="amount"
-                      placeholder="Amount"
-                      value={paymentReceivedFormState.amount}
-                      onChange={handlePaymentReceivedChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <textarea
-                      name="notes"
-                      placeholder="Notes"
-                      value={paymentReceivedFormState.notes}
-                      onChange={handlePaymentReceivedChange}
-                      rows="3"
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
-                      disabled={!isAppReady}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
-                    disabled={!isAppReady}
-                  >
+                    </button>
+                    <button
+                    onClick={() => handleNewTransaction('Payment Received')}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-md transition-colors w-full sm:w-auto"
+                    >
                     Add Payment Received
-                  </button>
-                </form>
-              </div>
-
-              {/* Add Commission Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-orange-500 dark:text-orange-400">Commission Details</h2>
-                <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('commission_details'); }} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input
-                      type="date"
-                      name="date"
-                      value={commissionFormState.date}
-                      onChange={handleCommissionChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      placeholder="Date"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="text"
-                      name="truckNo"
-                      placeholder="Truck No."
-                      value={commissionFormState.truckNo}
-                      onChange={handleCommissionChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="text"
-                      name="challanNo"
-                      placeholder="Challan No."
-                      value={commissionFormState.challanNo}
-                      onChange={handleCommissionChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <input
-                      type="number"
-                      step="1"
-                      name="amount"
-                      placeholder="Amount"
-                      value={commissionFormState.amount}
-                      onChange={handleCommissionChange}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      disabled={!isAppReady}
-                    />
-                    <textarea
-                      name="notes"
-                      placeholder="Notes"
-                      value={commissionFormState.notes}
-                      onChange={handleCommissionChange}
-                      rows="3"
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2"
-                      disabled={!isAppReady}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700 text-white'}`}
-                    disabled={!isAppReady}
-                  >
+                    </button>
+                    <button
+                    onClick={() => handleNewTransaction('Commission Details')}
+                    className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-lg shadow-md transition-colors w-full sm:w-auto"
+                    >
                     Add Commission
-                  </button>
-                </form>
-              </div>
-
-              {/* Summary Totals Section */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md flex justify-around items-center md:col-span-3">
-                <div className="text-center">
-                  <h3 className="text-xl font-semibold text-indigo-500 dark:text-indigo-400">Total Given</h3>
-                  <p className="text-3xl font-bold">₹{totalPaymentsGiven.toFixed(0)}</p>
+                    </button>
                 </div>
-                <div className="text-center">
-                  <h3 className="text-xl font-semibold text-green-500 dark:text-green-400">Total Received</h3>
-                  <p className="text-3xl font-bold">₹{totalPaymentsReceived.toFixed(0)}</p>
-                </div>
-                <div className="text-center">
-                  <h3 className="text-xl font-semibold text-orange-500 dark:text-orange-400">Total Commission</h3>
-                  <p className="text-3xl font-bold">₹{totalCommissions.toFixed(0)}</p>
-                </div>
-              </div>
             </div>
+
+            {/* Render different pages based on currentPage state */}
+            {currentPage === 'dashboard' && (
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h2 className="text-2xl font-semibold mb-4">Dashboard Overview</h2>
+                <div className="p-4 bg-gray-100 dark:bg-gray-700 rounded-lg shadow-inner">
+                  <h3 className="text-xl font-medium mb-2">Total Balances</h3>
+                  <div className="flex flex-col space-y-2">
+                    <div className="flex justify-between items-center py-2 px-4 bg-orange-200 dark:bg-orange-800 rounded-lg">
+                      <span className="text-lg font-medium text-orange-900 dark:text-orange-100">Payments Given</span>
+                      <span className="text-xl font-bold text-orange-900 dark:text-orange-100">₹{Math.round(allTotals.paymentGiven)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 px-4 bg-green-200 dark:bg-green-800 rounded-lg">
+                      <span className="text-lg font-medium text-green-900 dark:text-green-100">Payments Received</span>
+                      <span className="text-xl font-bold text-green-900 dark:text-green-100">₹{Math.round(allTotals.paymentReceived)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 px-4 bg-indigo-200 dark:bg-indigo-800 rounded-lg">
+                      <span className="text-lg font-medium text-indigo-900 dark:text-indigo-100">Commissions</span>
+                      <span className="text-xl font-bold text-indigo-900 dark:text-indigo-100">₹{Math.round(allTotals.commission)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentPage === 'allRecords' && (
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h2 className="text-2xl font-semibold mb-4">All Records</h2>
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-4 space-y-4 sm:space-y-0 sm:space-x-4">
+                  <input
+                    type="text"
+                    placeholder="Search by truck or challan number..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full sm:w-1/3 p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                  <select
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                    className="w-full sm:w-auto p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="Payment Given">Payment Given</option>
+                    <option value="Payment Received">Payment Received</option>
+                    <option value="Commission Details">Commission Details</option>
+                  </select>
+                </div>
+                {filteredTransactions.length > 0 ? (
+                  renderTransactionTable(filteredTransactions, 'all', true)
+                ) : (
+                  <p className="text-center text-gray-500 dark:text-gray-400">No matching records found.</p>
+                )}
+              </div>
+            )}
+
+            {currentPage === 'challanRecords' && (
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h2 className="text-2xl font-semibold mb-4">Challan Records</h2>
+                <div className="flex flex-wrap gap-4">
+                  {challanNumbers.length > 0 ? (
+                    challanNumbers.map(challan => (
+                      <button
+                        key={challan}
+                        onClick={() => setSelectedChallan(selectedChallan === challan ? null : challan)}
+                        className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                          selectedChallan === challan
+                            ? 'bg-blue-600 text-white shadow-lg'
+                            : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+                        }`}
+                      >
+                        {challan}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-center text-gray-500 dark:text-gray-400">No challan records found.</p>
+                  )}
+                </div>
+                {selectedChallan && (
+                  <>
+                    <h3 className="text-xl font-semibold mt-6 mb-4">Records for Challan: {selectedChallan}</h3>
+                    {renderTransactionTable(groupedByChallan[selectedChallan], 'all', false)}
+                  </>
+                )}
+              </div>
+            )}
+
+            {currentPage === 'truckRecords' && (
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h2 className="text-2xl font-semibold mb-4">Truck Records</h2>
+                <div className="flex flex-wrap gap-4">
+                  {truckNumbers.length > 0 ? (
+                    truckNumbers.map(truck => (
+                      <button
+                        key={truck}
+                        onClick={() => setSelectedTruck(selectedTruck === truck ? null : truck)}
+                        className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                          selectedTruck === truck
+                            ? 'bg-blue-600 text-white shadow-lg'
+                            : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+                        }`}
+                      >
+                        {truck}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-center text-gray-500 dark:text-gray-400">No truck records found.</p>
+                  )}
+                </div>
+                {selectedTruck && (
+                  <>
+                    <h3 className="text-xl font-semibold mt-6 mb-4">Records for Truck: {selectedTruck}</h3>
+                    {renderTransactionTable(groupedByTruck[selectedTruck], 'all', false)}
+                  </>
+                )}
+              </>
+            )}
           </>
-        )}
-
-        {/* All Records Page */}
-        {currentPage === 'allRecords' && (
-          <div className="mt-8 space-y-8">
-            <h2 className="text-3xl font-bold text-center text-blue-600 dark:text-blue-400">All Transactions</h2>
-            <div className="space-y-4">
-              <h3 className="text-xl font-semibold mb-4">Payment Given Records</h3>
-              {renderTransactionTable(transactions.filter(t => t.type === 'payment_given'))}
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-xl font-semibold mb-4">Payment Received Records</h3>
-              {renderTransactionTable(transactions.filter(t => t.type === 'payment_received'))}
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-xl font-semibold mb-4">Commission Details Records</h3>
-              {renderTransactionTable(transactions.filter(t => t.type === 'commission_details'))}
-            </div>
-          </div>
-        )}
-
-        {/* Challan Records Page */}
-        {currentPage === 'challanRecords' && (
-          <div className="mt-8 space-y-8">
-            <h2 className="text-3xl font-bold text-center text-blue-600 dark:text-blue-400 mb-6">Challan Records</h2>
-            {!selectedChallan ? (
-              <>
-                <div className="mb-4">
-                  <input
-                    type="text"
-                    placeholder="Search Challan No."
-                    value={challanSearchQuery}
-                    onChange={(e) => setChallanSearchQuery(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                  {filteredChallanKeys.map(challan => (
-                    <button
-                      key={challan}
-                      onClick={() => setSelectedChallan(challan)}
-                      className="bg-gray-200 dark:bg-gray-700 hover:bg-blue-300 dark:hover:bg-blue-600 text-gray-800 dark:text-gray-100 font-bold py-2 px-4 rounded-lg transition-colors truncate"
-                    >
-                      {challan}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setSelectedChallan(null)}
-                  className="mb-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-bold py-2 px-4 rounded-lg transition-colors"
-                >
-                  &larr; Back to Challan List
-                </button>
-                <h3 className="text-xl font-semibold mb-4">Records for Challan: {selectedChallan}</h3>
-                {renderTransactionTable(groupedByChallan[selectedChallan], false)}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Truck Records Page */}
-        {currentPage === 'truckRecords' && (
-          <div className="mt-8 space-y-8">
-            <h2 className="text-3xl font-bold text-center text-blue-600 dark:text-blue-400 mb-6">Truck Records</h2>
-            {!selectedTruck ? (
-              <>
-                <div className="mb-4">
-                  <input
-                    type="text"
-                    placeholder="Search Truck No."
-                    value={truckSearchQuery}
-                    onChange={(e) => setTruckSearchQuery(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                  {filteredTruckKeys.map(truck => (
-                    <button
-                      key={truck}
-                      onClick={() => setSelectedTruck(truck)}
-                      className="bg-gray-200 dark:bg-gray-700 hover:bg-blue-300 dark:hover:bg-blue-600 text-gray-800 dark:text-gray-100 font-bold py-2 px-4 rounded-lg transition-colors truncate"
-                    >
-                      {truck}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setSelectedTruck(null)}
-                  className="mb-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-bold py-2 px-4 rounded-lg transition-colors"
-                >
-                  &larr; Back to Truck List
-                </button>
-                <h3 className="text-xl font-semibold mb-4">Records for Truck: {selectedTruck}</h3>
-                {renderTransactionTable(groupedByTruck[selectedTruck], false)}
-              </>
-            )}
-          </div>
         )}
 
         {/* Delete Confirmation Modal */}
@@ -821,105 +648,6 @@ const App = () => {
                   Cancel
                 </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Form Modal */}
-        {editingTransaction && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
-              <h3 className="text-xl font-semibold mb-4 text-center">Edit Transaction</h3>
-              <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction(editingTransaction.type); }} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4">
-                  <input
-                    type="date"
-                    name="date"
-                    value={editFormState?.date || ''}
-                    onChange={handleEditFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                    placeholder="Date"
-                  />
-                  <input
-                    type="number"
-                    step="1"
-                    name="amount"
-                    placeholder="Amount"
-                    value={editFormState?.amount || ''}
-                    onChange={handleEditFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <input
-                    type="text"
-                    name="truckNo"
-                    placeholder="Truck No."
-                    value={editFormState?.truckNo || ''}
-                    onChange={handleEditFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  <input
-                    type="text"
-                    name="challanNo"
-                    placeholder="Challan No."
-                    value={editFormState?.challanNo || ''}
-                    onChange={handleEditFormChange}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                  {editingTransaction.type === 'payment_given' && (
-                    <>
-                      <input
-                        type="date"
-                        name="dueDate"
-                        value={editFormState?.dueDate || ''}
-                        onChange={handleEditFormChange}
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                        placeholder="Due Date"
-                      />
-                      <select
-                        name="fromAccount"
-                        value={editFormState?.fromAccount || ''}
-                        onChange={handleEditFormChange}
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      >
-                        <option value="">Select From Account</option>
-                        <option value="PNB">PNB</option>
-                        <option value="KB">KB</option>
-                        <option value="CASH">CASH</option>
-                      </select>
-                      <input
-                        type="text"
-                        name="toAccount"
-                        placeholder="To Account"
-                        value={editFormState?.toAccount || ''}
-                        onChange={handleEditFormChange}
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                      />
-                    </>
-                  )}
-                  <textarea
-                    name="notes"
-                    placeholder="Notes"
-                    value={editFormState?.notes || ''}
-                    onChange={handleEditFormChange}
-                    rows="3"
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
-                  />
-                </div>
-                <div className="flex justify-center space-x-4">
-                  <button
-                    type="submit"
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                  >
-                    Save Changes
-                  </button>
-                  <button
-                    onClick={() => { setEditingTransaction(null); setEditFormState(null); }}
-                    className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
             </div>
           </div>
         )}
