@@ -15,16 +15,32 @@ const customStyles = `
   }
 `;
 
-// PASTE YOUR FIREBASE CONFIG HERE
-// You need to replace this entire object with the one from your Firebase project settings.
-const firebaseConfig = {
-  apiKey: "AIzaSyA4id5rldiv9oLlPRYHp89CJvyrNJ3NPV4",
-  authDomain: "truck-payment-record.firebaseapp.com",
-  projectId: "truck-payment-record",
-  storageBucket: "truck-payment-record.firebasestorage.app",
-  messagingSenderId: "646930084187",
-  appId: "1:646930084187:web:bc4df27c97ea6e470f6a7e"
-};
+// Define a placeholder for the Firebase config
+let firebaseConfig = null;
+
+// Use a self-executing function to safely parse the config
+(() => {
+  try {
+    if (typeof __firebase_config !== 'undefined') {
+      firebaseConfig = JSON.parse(__firebase_config);
+    } else {
+      console.warn('__firebase_config is not defined. Using a placeholder.');
+      // Fallback for local development or if not in the Canvas environment
+      firebaseConfig = {
+        apiKey: "AIzaSyA4id5rldiv9oLlPRYHp89CJvyrNJ3NPV4",
+        authDomain: "truck-payment-record.firebaseapp.com",
+        projectId: "truck-payment-record",
+        storageBucket: "truck-payment-record.firebasestorage.app",
+        messagingSenderId: "646930084187",
+        appId: "1:646930084187:web:bc4df27c97ea6e470f6a7e"
+      };
+    }
+  } catch (e) {
+    console.error("Failed to parse __firebase_config", e);
+    // You might want to handle this more gracefully
+  }
+})();
+
 
 // Main App component
 const App = () => {
@@ -56,6 +72,10 @@ const App = () => {
 
   // Initialize Firebase and Auth
   useEffect(() => {
+    if (!firebaseConfig) {
+      console.error("Firebase config is not available. Cannot initialize Firebase.");
+      return;
+    }
     console.log("Initializing Firebase...");
     try {
       const app = initializeApp(firebaseConfig);
@@ -621,7 +641,7 @@ const App = () => {
                     {renderTransactionTable(groupedByTruck[selectedTruck], 'all', false)}
                   </>
                 )}
-              </>
+              </div>
             )}
           </>
         )}
