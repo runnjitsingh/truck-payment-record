@@ -45,6 +45,9 @@ const App = () => {
   // State for the single editing form
   const [editFormState, setEditFormState] = useState(null);
 
+  // This is a test change to trigger a new Vercel deployment.
+  const testChange = "This line is here to ensure a new commit is created.";
+
   // useEffect to initialize Firebase and handle authentication
   useEffect(() => {
     const initFirebase = async () => {
@@ -68,7 +71,13 @@ const App = () => {
         }
         
         // --- START DEBUGGING LOG ---
-        console.log("Firebase API Key being used:", firebaseConfig.apiKey);
+        console.log("Checking Firebase config values from environment variables:");
+        console.log(`API Key: ${firebaseConfig.apiKey ? 'Found' : 'Undefined'}`);
+        console.log(`Auth Domain: ${firebaseConfig.authDomain ? 'Found' : 'Undefined'}`);
+        console.log(`Project ID: ${firebaseConfig.projectId ? 'Found' : 'Undefined'}`);
+        console.log(`Storage Bucket: ${firebaseConfig.storageBucket ? 'Found' : 'Undefined'}`);
+        console.log(`Messaging Sender ID: ${firebaseConfig.messagingSenderId ? 'Found' : 'Undefined'}`);
+        console.log(`App ID: ${firebaseConfig.appId ? 'Found' : 'Undefined'}`);
         // --- END DEBUGGING LOG ---
 
         const app = initializeApp(firebaseConfig);
