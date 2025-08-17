@@ -66,6 +66,10 @@ const App = () => {
             appId: process.env.REACT_APP_FIREBASE_APP_ID
           };
         }
+        
+        // --- START DEBUGGING LOG ---
+        console.log("Firebase API Key being used:", firebaseConfig.apiKey);
+        // --- END DEBUGGING LOG ---
 
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
@@ -557,7 +561,25 @@ const App = () => {
         {currentPage === 'allRecords' && (
           <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg shadow-md">
             <h2 className="text-2xl font-bold mb-4 text-center">All Records</h2>
-            {renderTransactionTable(transactions)}
+            <input
+              type="text"
+              placeholder="Search by Challan No."
+              value={challanSearchQuery}
+              onChange={(e) => setChallanSearchQuery(e.target.value)}
+              className="w-full p-2 mb-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800"
+            />
+            {filteredChallanKeys.length === 0 ? (
+              <p className="text-center text-gray-500 dark:text-gray-400">No matching challans found.</p>
+            ) : (
+              <div className="space-y-4">
+                {filteredChallanKeys.map(challan => (
+                  <div key={challan} className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+                    <h3 className="text-xl font-semibold mb-2">{challan}</h3>
+                    {renderTransactionTable(groupedByChallan[challan], true)}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
