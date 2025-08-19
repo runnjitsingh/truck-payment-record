@@ -45,9 +45,6 @@ const App = () => {
   // State for the single editing form
   const [editFormState, setEditFormState] = useState(null);
 
-  // This is a test change to trigger a new Vercel deployment.
-  const testChange = "This line is here to ensure a new commit is created.";
-
   // useEffect to initialize Firebase and handle authentication
   useEffect(() => {
     const initFirebase = async () => {
@@ -58,20 +55,21 @@ const App = () => {
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
           firebaseConfig = JSON.parse(__firebase_config);
         } else {
-          // IMPORTANT: This is for local development only. For deployment,
-          // you MUST configure these as environment variables.
+          // IMPORTANT: The Firebase keys are hardcoded below to bypass the Vercel issue.
+          // This is NOT a secure or recommended practice for production.
+          // For a live app, you must use environment variables.
           firebaseConfig = {
-            apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-            authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-            projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-            storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-            messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-            appId: process.env.REACT_APP_FIREBASE_APP_ID
+            apiKey: "AIzaSyAdgjFY9QpgXQYCrcjbyN6EUjMV-Y3WM_o",
+            authDomain: "truck-payment-record-27b18.firebaseapp.com",
+            projectId: "truck-payment-record-27b18",
+            storageBucket: "truck-payment-record-27b18.firebasestorage.app",
+            messagingSenderId: "670987953173",
+            appId: "1:670987953173:web:cc28a9ea277bd0c2af5a1c"
           };
         }
-        
+
         // --- START DEBUGGING LOG ---
-        console.log("Checking Firebase config values from environment variables:");
+        console.log("Checking Firebase config values:");
         console.log(`API Key: ${firebaseConfig.apiKey ? 'Found' : 'Undefined'}`);
         console.log(`Auth Domain: ${firebaseConfig.authDomain ? 'Found' : 'Undefined'}`);
         console.log(`Project ID: ${firebaseConfig.projectId ? 'Found' : 'Undefined'}`);
