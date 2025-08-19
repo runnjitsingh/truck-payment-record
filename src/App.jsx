@@ -68,16 +68,6 @@ const App = () => {
           };
         }
 
-        // --- START DEBUGGING LOG ---
-        console.log("Checking Firebase config values:");
-        console.log(`API Key: ${firebaseConfig.apiKey ? 'Found' : 'Undefined'}`);
-        console.log(`Auth Domain: ${firebaseConfig.authDomain ? 'Found' : 'Undefined'}`);
-        console.log(`Project ID: ${firebaseConfig.projectId ? 'Found' : 'Undefined'}`);
-        console.log(`Storage Bucket: ${firebaseConfig.storageBucket ? 'Found' : 'Undefined'}`);
-        console.log(`Messaging Sender ID: ${firebaseConfig.messagingSenderId ? 'Found' : 'Undefined'}`);
-        console.log(`App ID: ${firebaseConfig.appId ? 'Found' : 'Undefined'}`);
-        // --- END DEBUGGING LOG ---
-
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
         const firebaseAuth = getAuth(app);
