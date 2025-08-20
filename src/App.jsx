@@ -141,6 +141,16 @@ const App = () => {
     return () => unsubscribe();
   }, [isAuthReady, db, userId, appId]);
 
+  // Helper function to format date to dd/mm/yy
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    return `${day}/${month}/${year}`;
+  };
+
   // Handle changes for Payment Given form
   const handlePaymentGivenChange = (e) => {
     const { name, value } = e.target;
@@ -293,6 +303,9 @@ const App = () => {
     .filter(t => t.type === 'commission_details')
     .reduce((sum, t) => sum + (t.amount || 0), 0);
 
+  // Calculate the total profit
+  const totalProfit = (totalPaymentsReceived - totalPaymentsGiven) + totalCommissions;
+
   // Render a transaction list in a table format
   const renderTransactionTable = (list, showActions = true) => {
     if (list.length === 0) {
@@ -307,20 +320,20 @@ const App = () => {
     switch(firstTransactionType) {
       case 'payment_given':
         headers = ['Date', 'Truck No.', 'Challan No.', 'From Account', 'To Account', 'Amount (₹)', 'Due Date', 'Notes'];
-        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.fromAccount || 'N/A', t.toAccount || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.dueDate || 'N/A', t.notes || 'N/A'];
+        rowData = (t) => [formatDate(t.date), t.truckNo || 'N/A', t.challanNo || 'N/A', t.fromAccount || 'N/A', t.toAccount || 'N/A', t.amount ? t.amount.toFixed(0) : '0', formatDate(t.dueDate), t.notes || 'N/A'];
         break;
       case 'payment_received':
         headers = ['Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
-        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
+        rowData = (t) => [formatDate(t.date), t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
         break;
       case 'commission_details':
         headers = ['Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
-        rowData = (t) => [t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
+        rowData = (t) => [formatDate(t.date), t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
         break;
       default:
         // Generic headers for mixed or unknown types
         headers = ['Type', 'Date', 'Truck No.', 'Challan No.', 'Amount (₹)', 'Notes'];
-        rowData = (t) => [t.type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase()), t.date, t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
+        rowData = (t) => [t.type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase()), formatDate(t.date), t.truckNo || 'N/A', t.challanNo || 'N/A', t.amount ? t.amount.toFixed(0) : '0', t.notes || 'N/A'];
         break;
     }
 
@@ -404,7 +417,7 @@ const App = () => {
 
   // Render the UI
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 font-inter flex flex-col items-center">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-inter flex flex-col items-center justify-center p-4">
       {/* Apply custom styles to hide number input arrows */}
       <style>{customStyles}</style>
       <div className="container mx-auto max-w-4xl p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
@@ -468,21 +481,21 @@ const App = () => {
             <div className="flex justify-center space-x-4 mb-6 flex-wrap">
                 <button
                     onClick={() => setActiveForm(activeForm === 'payment_given' ? null : 'payment_given')}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-colors ${activeForm === 'payment_given' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-colors highlighted-button ${activeForm === 'payment_given' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-indigo-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-indigo-600'}`}
                 >
                     Payment Given
                 </button>
                 <button
                     onClick={() => setActiveForm(activeForm === 'payment_received' ? null : 'payment_received')}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-colors ${activeForm === 'payment_received' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-colors highlighted-button ${activeForm === 'payment_received' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-green-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-green-600'}`}
                 >
                     Payment Received
                 </button>
                 <button
                     onClick={() => setActiveForm(activeForm === 'commission_details' ? null : 'commission_details')}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-colors ${activeForm === 'commission_details' ? 'bg-yellow-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-colors highlighted-button ${activeForm === 'commission_details' ? 'bg-yellow-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-yellow-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-yellow-600'}`}
                 >
-                    Commission
+                    Commission Details
                 </button>
             </div>
 
@@ -566,7 +579,7 @@ const App = () => {
             </div>
 
             {/* Totals Section */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-blue-200 dark:bg-blue-700 p-4 rounded-lg shadow-sm text-center">
                 <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Total Payments Given</p>
                 <p className="text-xl font-bold text-blue-900 dark:text-blue-100">₹{totalPaymentsGiven.toFixed(0)}</p>
@@ -578,6 +591,10 @@ const App = () => {
               <div className="bg-yellow-200 dark:bg-yellow-700 p-4 rounded-lg shadow-sm text-center">
                 <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Total Commissions</p>
                 <p className="text-xl font-bold text-yellow-900 dark:text-yellow-100">₹{totalCommissions.toFixed(0)}</p>
+              </div>
+              <div className="bg-purple-200 dark:bg-purple-700 p-4 rounded-lg shadow-sm text-center">
+                <p className="text-sm font-medium text-purple-800 dark:text-purple-200">Total Profit</p>
+                <p className="text-xl font-bold text-purple-900 dark:text-purple-100">₹{totalProfit.toFixed(0)}</p>
               </div>
             </div>
 
@@ -628,7 +645,7 @@ const App = () => {
                 {filteredChallanKeys.map(challan => (
                   <div key={challan} className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
                     <h3 className="text-xl font-semibold mb-2">{challan}</h3>
-                    {renderTransactionTable(groupedByChallan[challan], true)}
+                    {renderTransactionTable(groupedByChallan[challan], false)} {/* changed to false */}
                   </div>
                 ))}
               </div>
@@ -654,7 +671,7 @@ const App = () => {
                 {filteredTruckKeys.map(truck => (
                   <div key={truck} className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
                     <h3 className="text-xl font-semibold mb-2">{truck}</h3>
-                    {renderTransactionTable(groupedByTruck[truck], true)}
+                    {renderTransactionTable(groupedByTruck[truck], false)} {/* changed to false */}
                   </div>
                 ))}
               </div>
