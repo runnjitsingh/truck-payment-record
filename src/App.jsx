@@ -36,6 +36,7 @@ const App = () => {
   const [selectedTruck, setSelectedTruck] = useState(null);
   const [challanSearchQuery, setChallanSearchQuery] = useState('');
   const [truckSearchQuery, setTruckSearchQuery] = useState('');
+  const [activeForm, setActiveForm] = useState(null); // New state to control which form is visible
 
   // Separate state variables for each form to prevent automatic population
   const [paymentGivenFormState, setPaymentGivenFormState] = useState({ date: '', amount: '', dueDate: '', challanNo: '', fromAccount: '', toAccount: '', notes: '', truckNo: '' });
@@ -230,6 +231,7 @@ const App = () => {
       if (type === 'commission_details') setCommissionFormState({ date: '', amount: '', challanNo: '', notes: '', truckNo: '' });
 
       setError(''); // Clear any previous errors
+      setActiveForm(null); // Close the form after submission
     } catch (error) {
       console.error("Error adding/updating document:", error);
       setError("Failed to save transaction. Check your database rules.");
@@ -402,7 +404,7 @@ const App = () => {
 
   // Render the UI
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 font-inter">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 font-inter flex flex-col items-center">
       {/* Apply custom styles to hide number input arrows */}
       <style>{customStyles}</style>
       <div className="container mx-auto max-w-4xl p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
@@ -462,77 +464,105 @@ const App = () => {
         {/* Conditional rendering based on currentPage */}
         {currentPage === 'dashboard' && (
           <>
+            {/* New form selection buttons */}
+            <div className="flex justify-center space-x-4 mb-6 flex-wrap">
+                <button
+                    onClick={() => setActiveForm(activeForm === 'payment_given' ? null : 'payment_given')}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-colors ${activeForm === 'payment_given' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+                >
+                    Payment Given
+                </button>
+                <button
+                    onClick={() => setActiveForm(activeForm === 'payment_received' ? null : 'payment_received')}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-colors ${activeForm === 'payment_received' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+                >
+                    Payment Received
+                </button>
+                <button
+                    onClick={() => setActiveForm(activeForm === 'commission_details' ? null : 'commission_details')}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-colors ${activeForm === 'commission_details' ? 'bg-yellow-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'}`}
+                >
+                    Commission
+                </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* Add Payment Given Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-indigo-500 dark:text-indigo-400">Payment Given</h2>
-                <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('payment_given'); }} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="date" name="date" value={paymentGivenFormState.date} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" placeholder="Date" disabled={!isAppReady} />
-                    <input type="date" name="dueDate" value={paymentGivenFormState.dueDate} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" placeholder="Due Date" disabled={!isAppReady} />
-                    <input type="text" name="truckNo" placeholder="Truck No." value={paymentGivenFormState.truckNo} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <input type="text" name="challanNo" placeholder="Challan No." value={paymentGivenFormState.challanNo} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <select name="fromAccount" value={paymentGivenFormState.fromAccount} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} >
-                      <option value="">Select From Account</option>
-                      <option value="PNB">PNB</option>
-                      <option value="KB">KB</option>
-                      <option value="CASH">CASH</option>
-                    </select>
-                    <input type="text" name="toAccount" placeholder="To Account" value={paymentGivenFormState.toAccount} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <input type="number" step="1" name="amount" placeholder="Amount" value={paymentGivenFormState.amount} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <textarea name="notes" placeholder="Notes" value={paymentGivenFormState.notes} onChange={handlePaymentGivenChange} rows="3" className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2" disabled={!isAppReady} />
-                  </div>
-                  <button
-                    type="submit"
-                    className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-                    disabled={!isAppReady}
-                  >
-                    Add Payment Given
-                  </button>
-                </form>
-              </div>
+              {activeForm === 'payment_given' && (
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
+                  <h2 className="text-2xl font-semibold mb-4 text-center text-indigo-500 dark:text-indigo-400">Payment Given</h2>
+                  <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('payment_given'); }} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input type="date" name="date" value={paymentGivenFormState.date} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" placeholder="Date" disabled={!isAppReady} />
+                      <input type="date" name="dueDate" value={paymentGivenFormState.dueDate} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" placeholder="Due Date" disabled={!isAppReady} />
+                      <input type="text" name="truckNo" placeholder="Truck No." value={paymentGivenFormState.truckNo} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <input type="text" name="challanNo" placeholder="Challan No." value={paymentGivenFormState.challanNo} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <select name="fromAccount" value={paymentGivenFormState.fromAccount} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} >
+                        <option value="">Select From Account</option>
+                        <option value="PNB">PNB</option>
+                        <option value="KB">KB</option>
+                        <option value="CASH">CASH</option>
+                      </select>
+                      <input type="text" name="toAccount" placeholder="To Account" value={paymentGivenFormState.toAccount} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <input type="number" step="1" name="amount" placeholder="Amount" value={paymentGivenFormState.amount} onChange={handlePaymentGivenChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <textarea name="notes" placeholder="Notes" value={paymentGivenFormState.notes} onChange={handlePaymentGivenChange} rows="3" className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2" disabled={!isAppReady} />
+                    </div>
+                    <button
+                      type="submit"
+                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                      disabled={!isAppReady}
+                    >
+                      Add Payment Given
+                    </button>
+                  </form>
+                </div>
+              )}
 
               {/* Add Payment Received Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-green-500 dark:text-green-400">Payment Received</h2>
-                <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('payment_received'); }} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="date" name="date" value={paymentReceivedFormState.date} onChange={handlePaymentReceivedChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <input type="text" name="truckNo" placeholder="Truck No." value={paymentReceivedFormState.truckNo} onChange={handlePaymentReceivedChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <input type="text" name="challanNo" placeholder="Challan No." value={paymentReceivedFormState.challanNo} onChange={handlePaymentReceivedChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <input type="number" step="1" name="amount" placeholder="Amount" value={paymentReceivedFormState.amount} onChange={handlePaymentReceivedChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <textarea name="notes" placeholder="Notes" value={paymentReceivedFormState.notes} onChange={handlePaymentReceivedChange} rows="3" className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2" disabled={!isAppReady} />
-                  </div>
-                  <button
-                    type="submit"
-                    className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
-                    disabled={!isAppReady}
-                  >
-                    Add Payment Received
-                  </button>
-                </form>
-              </div>
+              {activeForm === 'payment_received' && (
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
+                  <h2 className="text-2xl font-semibold mb-4 text-center text-green-500 dark:text-green-400">Payment Received</h2>
+                  <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('payment_received'); }} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input type="date" name="date" value={paymentReceivedFormState.date} onChange={handlePaymentReceivedChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <input type="text" name="truckNo" placeholder="Truck No." value={paymentReceivedFormState.truckNo} onChange={handlePaymentReceivedChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <input type="text" name="challanNo" placeholder="Challan No." value={paymentReceivedFormState.challanNo} onChange={handlePaymentReceivedChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <input type="number" step="1" name="amount" placeholder="Amount" value={paymentReceivedFormState.amount} onChange={handlePaymentReceivedChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <textarea name="notes" placeholder="Notes" value={paymentReceivedFormState.notes} onChange={handlePaymentReceivedChange} rows="3" className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2" disabled={!isAppReady} />
+                    </div>
+                    <button
+                      type="submit"
+                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+                      disabled={!isAppReady}
+                    >
+                      Add Payment Received
+                    </button>
+                  </form>
+                </div>
+              )}
 
               {/* Add Commission Form */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
-                <h2 className="text-2xl font-semibold mb-4 text-center text-yellow-500 dark:text-yellow-400">Commission Details</h2>
-                <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('commission_details'); }} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="date" name="date" value={commissionFormState.date} onChange={handleCommissionChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <input type="text" name="truckNo" placeholder="Truck No." value={commissionFormState.truckNo} onChange={handleCommissionChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <input type="text" name="challanNo" placeholder="Challan No." value={commissionFormState.challanNo} onChange={handleCommissionChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <input type="number" step="1" name="amount" placeholder="Amount" value={commissionFormState.amount} onChange={handleCommissionChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
-                    <textarea name="notes" placeholder="Notes" value={commissionFormState.notes} onChange={handleCommissionChange} rows="3" className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2" disabled={!isAppReady} />
-                  </div>
-                  <button
-                    type="submit"
-                    className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700 text-white'}`}
-                    disabled={!isAppReady}
-                  >
-                    Add Commission
-                  </button>
-                </form>
-              </div>
+              {activeForm === 'commission_details' && (
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg shadow-md md:col-span-3">
+                  <h2 className="text-2xl font-semibold mb-4 text-center text-yellow-500 dark:text-yellow-400">Commission Details</h2>
+                  <form onSubmit={(e) => { e.preventDefault(); handleAddOrUpdateTransaction('commission_details'); }} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input type="date" name="date" value={commissionFormState.date} onChange={handleCommissionChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <input type="text" name="truckNo" placeholder="Truck No." value={commissionFormState.truckNo} onChange={handleCommissionChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <input type="text" name="challanNo" placeholder="Challan No." value={commissionFormState.challanNo} onChange={handleCommissionChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <input type="number" step="1" name="amount" placeholder="Amount" value={commissionFormState.amount} onChange={handleCommissionChange} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800" disabled={!isAppReady} />
+                      <textarea name="notes" placeholder="Notes" value={commissionFormState.notes} onChange={handleCommissionChange} rows="3" className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 md:col-span-2" disabled={!isAppReady} />
+                    </div>
+                    <button
+                      type="submit"
+                      className={`w-full font-bold py-2 px-4 rounded-lg shadow-md transition-colors ${!isAppReady ? 'bg-gray-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700 text-white'}`}
+                      disabled={!isAppReady}
+                    >
+                      Add Commission
+                    </button>
+                  </form>
+                </div>
+              )}
             </div>
 
             {/* Totals Section */}
